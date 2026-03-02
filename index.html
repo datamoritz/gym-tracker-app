@@ -9,15 +9,6 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc };
-    </script>
 
     <style>
         body { 
@@ -103,10 +94,8 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        const APP_VERSION = "v2.0.0-cloud";
         const MOTIVATIONS = [
             "Stronger than yesterday.",
-            "The only bad workout is the one that didn't happen.",
             "Discipline beats motivation.",
             "Focus on progress, not perfection.",
             "Great work, now go recover!"
@@ -129,14 +118,13 @@
             ChevronRight: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
             ChevronLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>,
             History: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-            Cloud: ({ active }) => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={active ? "#10b981" : "none"} stroke={active ? "#10b981" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.2-4-4.5A7 7 0 1 0 5 13c0 .3 0 .7.1 1a4.5 4.5 0 1 0 4.4 5h8z"/></svg>
+            Cloud: ({ active }) => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={active ? "#3b82f6" : "none"} stroke={active ? "#3b82f6" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.2-4-4.5A7 7 0 1 0 5 13c0 .3 0 .7.1 1a4.5 4.5 0 1 0 4.4 5h8z"/></svg>
         };
 
         const App = () => {
             const [view, setView] = useState('home');
-            const [user, setUser] = useState(null);
-            const [routines, setRoutines] = useState([]);
-            const [history, setHistory] = useState([]);
+            const [routines, setRoutines] = useState(() => JSON.parse(localStorage.getItem('gym_routines')) || []);
+            const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('gym_history')) || []);
             const [activeRoutine, setActiveRoutine] = useState(null);
             const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
             const [workoutLog, setWorkoutLog] = useState({});
@@ -151,51 +139,14 @@
             const timerRef = useRef(null);
             const audioCtx = useRef(null);
 
-            // Firebase Initialization
-            const firebaseConfig = JSON.parse(__firebase_config);
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'gym-tracker-default';
-            const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, collection, query, onSnapshot, addDoc, deleteDoc } = window.FirebaseSDK;
-            
-            const firebaseApp = initializeApp(firebaseConfig);
-            const auth = getAuth(firebaseApp);
-            const db = getFirestore(firebaseApp);
+            // Local storage sync
+            useEffect(() => {
+                localStorage.setItem('gym_routines', JSON.stringify(routines));
+            }, [routines]);
 
             useEffect(() => {
-                const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                };
-                initAuth();
-                const unsubscribe = onAuthStateChanged(auth, setUser);
-                return () => unsubscribe();
-            }, []);
-
-            useEffect(() => {
-                if (!user) return;
-
-                // Sync Routines
-                const routinesQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'routines');
-                const unsubRoutines = onSnapshot(routinesQuery, (snapshot) => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setRoutines(data);
-                }, (err) => console.error("Routines Sync Error:", err));
-
-                // Sync Logs
-                const logsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'logs');
-                const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // Sort history by date locally
-                    setHistory(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
-                }, (err) => console.error("Logs Sync Error:", err));
-
-                return () => {
-                    unsubRoutines();
-                    unsubLogs();
-                };
-            }, [user]);
+                localStorage.setItem('gym_history', JSON.stringify(history));
+            }, [history]);
 
             useEffect(() => {
                 if (view === 'active' && activeRoutine) {
@@ -212,50 +163,56 @@
                 }
             }, [currentExerciseIndex, view, activeRoutine]);
 
-            const saveRoutine = async (routineData) => {
-                if (!user) return;
-                setIsSaving(true);
-                const docId = routineData.id.toString();
-                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'routines', docId), routineData);
-                setIsSaving(false);
+            const saveRoutine = (routineData) => {
+                setRoutines(prev => {
+                    const exists = prev.find(r => r.id === routineData.id);
+                    if (exists) return prev.map(r => r.id === routineData.id ? routineData : r);
+                    return [...prev, routineData];
+                });
             };
 
-            const deleteRoutine = async () => {
-                if (!user || !activeRoutine) return;
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'routines', activeRoutine.id.toString()));
+            const deleteRoutine = () => {
+                if (!activeRoutine) return;
+                setRoutines(prev => prev.filter(r => r.id !== activeRoutine.id));
                 setView('home');
             };
 
             const finishWorkout = async () => {
-                if (!user || !activeRoutine) return;
+                if (!activeRoutine) return;
                 setIsSaving(true);
+
                 const workoutEntry = {
+                    id: Date.now(),
                     date: new Date().toISOString(),
                     routineName: activeRoutine.name,
-                    logs: workoutLog,
-                    duration: "TBD"
+                    logs: workoutLog
                 };
-                await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'logs'), workoutEntry);
-                setIsSaving(false);
-                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#3b82f6', '#ffffff'] });
-                setView('success');
-            };
 
-            const playTimerEndSound = () => {
+                // Add to local history
+                setHistory(prev => [workoutEntry, ...prev]);
+
+                // SYNC TO NOTION API FOLDER
                 try {
-                    if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
-                    const osc = audioCtx.current.createOscillator();
-                    const gain = audioCtx.current.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(880, audioCtx.current.currentTime);
-                    osc.frequency.exponentialRampToValueAtTime(440, audioCtx.current.currentTime + 0.5);
-                    gain.gain.setValueAtTime(0.1, audioCtx.current.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.current.currentTime + 0.5);
-                    osc.connect(gain);
-                    gain.connect(audioCtx.current.destination);
-                    osc.start();
-                    osc.stop(audioCtx.current.currentTime + 0.5);
-                } catch (e) {}
+                    await fetch('/api/notion', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: "pages",
+                            notionKey: "YOUR_SECRET_HERE", // Replace with your Notion Integration Token
+                            body: {
+                                parent: { database_id: "YOUR_DB_ID_HERE" },
+                                properties: {
+                                    Name: { title: [{ text: { content: activeRoutine.name } }] },
+                                    Date: { date: { start: workoutEntry.date } }
+                                }
+                            }
+                        })
+                    });
+                } catch (e) { console.error("Notion Sync failed, but history saved locally."); }
+
+                setIsSaving(false);
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                setView('success');
             };
 
             const startTimer = (seconds) => {
@@ -272,7 +229,6 @@
                         if (remaining <= 0) { 
                             setTimerActive(false); 
                             setTargetEndTime(null);
-                            playTimerEndSound();
                         }
                     }, 500);
                 }
@@ -283,14 +239,12 @@
                 <header className="glass-header pt-14 pb-5 px-6 sticky top-0 z-50 flex justify-between items-end safe-top">
                     <div className="flex items-center gap-3">
                         {backAction ? (
-                            <button onClick={backAction} className="p-2 -ml-2 text-white">
-                                <Icons.ChevronLeft />
-                            </button>
+                            <button onClick={backAction} className="p-2 -ml-2 text-white"><Icons.ChevronLeft /></button>
                         ) : <Icons.Logo />}
                         <div>
                             <h1 className="text-xl font-bold text-[#e3e3e3] tracking-tight leading-none mb-1">{title}</h1>
                             <div className="flex items-center gap-1.5">
-                                <Icons.Cloud active={!!user} />
+                                <Icons.Cloud active={true} />
                                 <p className="text-[9px] text-[#9e9e9e] font-black uppercase tracking-widest">{sub}</p>
                             </div>
                         </div>
@@ -307,14 +261,8 @@
 
             if (view === 'home') return (
                 <div className="min-h-screen bg-black">
-                    <Header title="Training" sub="Cloud Connected" />
+                    <Header title="Training" sub="Local Database" />
                     <main className="p-6 space-y-4 pb-32">
-                        {routines.length === 0 && (
-                            <div className="py-20 text-center opacity-40">
-                                <p className="text-sm font-medium">No routines found in the cloud.</p>
-                                <p className="text-[10px] uppercase tracking-widest mt-1">Build your first protocol below</p>
-                            </div>
-                        )}
                         {routines.map(r => (
                             <div key={r.id} className="p-5 dark-card flex items-center justify-between shadow-lg active:bg-[#111] transition-colors">
                                 <div className="flex-1">
@@ -347,16 +295,9 @@
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
                                         <h4 className="font-bold text-white text-md">{h.routineName}</h4>
-                                        <p className="text-[10px] text-zinc-500 font-bold uppercase mt-1">{new Date(h.date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                                        <p className="text-[10px] text-zinc-500 font-bold uppercase mt-1">{new Date(h.date).toLocaleDateString()}</p>
                                     </div>
-                                    <span className="status-pill bg-zinc-800 text-zinc-400">Done</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {Object.entries(h.logs).slice(0, 4).map(([id, sets]) => (
-                                        <div key={id} className="text-[10px] text-zinc-400 font-medium">
-                                            {sets.length} Sets Completed
-                                        </div>
-                                    ))}
+                                    <span className="status-pill bg-zinc-800 text-zinc-400">Saved</span>
                                 </div>
                             </div>
                         ))}
@@ -377,21 +318,20 @@
                     <main className="p-6 space-y-6">
                         {showConfirmDelete && (
                             <div className="p-5 bg-red-950/20 border border-red-900/40 rounded-3xl">
-                                <p className="text-[10px] text-red-400 font-black text-center mb-4 uppercase tracking-widest">Delete routine from cloud?</p>
+                                <p className="text-[10px] text-red-400 font-black text-center mb-4 uppercase tracking-widest">Delete routine?</p>
                                 <div className="flex gap-2">
-                                    <button onClick={deleteRoutine} className="flex-1 bg-red-600 text-white py-4 rounded-2xl text-[10px] font-black uppercase italic">Permanent Delete</button>
+                                    <button onClick={deleteRoutine} className="flex-1 bg-red-600 text-white py-4 rounded-2xl text-[10px] font-black uppercase italic">Delete</button>
                                     <button onClick={() => setShowConfirmDelete(false)} className="flex-1 bg-black text-[#9e9e9e] py-4 rounded-2xl text-[10px] font-black uppercase border border-[#1c1c1e]">Cancel</button>
                                 </div>
                             </div>
                         )}
                         <input value={activeRoutine.name} onChange={e => setActiveRoutine({...activeRoutine, name: e.target.value})} className="text-3xl font-black text-[#e3e3e3] bg-transparent border-none outline-none w-full italic" placeholder="Protocol Name" />
-                        
                         <div className="space-y-3">
                             {activeRoutine.exercises.map((ex, i) => (
                                 <div key={ex.id} className="p-4 dark-card space-y-4">
                                     <div className="flex justify-between items-center">
                                         <input value={ex.name} onChange={e => { const n={...activeRoutine}; n.exercises[i].name=e.target.value; setActiveRoutine(n); }} className="font-bold text-[#e3e3e3] text-sm bg-transparent outline-none w-full" />
-                                        <button onClick={() => { const n={...activeRoutine}; n.exercises.splice(i,1); setActiveRoutine(n); }} className="p-2 text-zinc-700 active:text-red-500"><Icons.Trash /></button>
+                                        <button onClick={() => { const n={...activeRoutine}; n.exercises.splice(i,1); setActiveRoutine(n); }} className="p-2 text-zinc-700"><Icons.Trash /></button>
                                     </div>
                                     <div className="grid grid-cols-4 gap-2">
                                         <div><span className="text-[8px] font-black text-[#666] uppercase block mb-1 text-center">Sets</span><input type="number" value={ex.targetSets} onChange={e => { const n={...activeRoutine}; n.exercises[i].targetSets=parseInt(e.target.value) || 1; setActiveRoutine(n); }} className="planner-input" /></div>
@@ -405,7 +345,7 @@
                         </div>
                     </main>
                     <footer className="fixed bottom-0 left-0 right-0 p-6 bg-black/90 backdrop-blur-md border-t border-[#1c1c1e] pb-12 z-50 safe-bottom">
-                        <button onClick={() => { saveRoutine(activeRoutine); setView('home'); }} className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs italic">Sync to Cloud</button>
+                        <button onClick={() => { saveRoutine(activeRoutine); setView('home'); }} className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs italic">Save Protocol</button>
                     </footer>
                 </div>
             );
@@ -416,84 +356,53 @@
                 const totalExercises = activeRoutine.exercises.length;
                 const progressPct = ((currentExerciseIndex + (logged.length / Math.max(1, ex.targetSets))) / totalExercises) * 100;
 
-                const adjustWeight = (v) => setInputWeight(prev => Math.max(0, parseFloat(prev) + v));
-                const adjustReps = (v) => setInputReps(prev => Math.max(0, parseInt(prev) + v));
-
                 return (
                     <div className="min-h-screen bg-black relative flex flex-col">
                         <div className="fixed top-0 left-0 right-0 z-[60] h-1.5 bg-[#1c1c1e] safe-top">
-                            <div className="h-full bg-blue-600 transition-all duration-700 ease-out shadow-[0_0_15px_rgba(59,130,246,0.5)]" style={{ width: `${Math.min(progressPct, 100)}%` }} />
+                            <div className="h-full bg-blue-600 transition-all duration-700 ease-out" style={{ width: `${Math.min(progressPct, 100)}%` }} />
                         </div>
-
                         <Header title={ex.name} sub={`Move ${currentExerciseIndex + 1} of ${totalExercises}`} rightAction={<div className="p-3"><Icons.Logo /></div>} />
-                        
                         <main className="flex-1 p-6 space-y-6 pb-48 overflow-y-auto no-scrollbar">
-                            
                             {timerActive && (
-                                <div className="w-full py-8 dark-card flex flex-col items-center justify-center animate-in slide-in-from-top-4 duration-500 shadow-2xl border-blue-900/30 bg-zinc-950">
+                                <div className="w-full py-8 dark-card flex flex-col items-center justify-center bg-zinc-950">
                                     <div className="text-blue-500 uppercase tracking-[0.3em] font-black text-[10px] mb-2">Rest Phase</div>
-                                    <div className="text-[100px] font-black text-white leading-none tabular-nums tracking-tighter timer-animate mb-6">
+                                    <div className="text-[100px] font-black text-white leading-none timer-animate mb-6">
                                         {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
                                     </div>
-                                    <button onClick={() => {setTimerActive(false); setTargetEndTime(null);}} className="px-10 py-3 bg-zinc-900 text-[#e3e3e3] border border-zinc-800 rounded-full font-black uppercase tracking-widest text-[10px] active:scale-95 transition-all">Skip Rest</button>
+                                    <button onClick={() => {setTimerActive(false); setTargetEndTime(null);}} className="px-10 py-3 bg-zinc-900 text-[#e3e3e3] border border-zinc-800 rounded-full font-black uppercase tracking-widest text-[10px]">Skip Rest</button>
                                 </div>
                             )}
-
                             <div className="flex gap-4">
                                 <div className="flex-1 space-y-3">
                                     <div className="p-8 dark-card text-center shadow-lg relative bg-zinc-950">
-                                        <span className="text-[9px] font-black text-[#666] uppercase tracking-widest block mb-1 text-center">Load</span>
+                                        <span className="text-[9px] font-black text-[#666] uppercase tracking-widest block mb-1">Load</span>
                                         <input type="number" step="0.5" value={inputWeight} onChange={e => setInputWeight(e.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
-                                        <span className="text-[10px] font-black text-blue-500 absolute bottom-3 right-0 left-0 uppercase tracking-widest text-center">Kilograms</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button onClick={() => adjustWeight(-2.5)} className="input-control-btn text-xs">2.5</button>
-                                        <button onClick={() => adjustWeight(2.5)} className="input-control-btn text-xs">+2.5</button>
-                                        <button onClick={() => adjustWeight(-5)} className="input-control-btn text-lg">-</button>
-                                        <button onClick={() => adjustWeight(5)} className="input-control-btn text-lg">+</button>
+                                        <span className="text-[10px] font-black text-blue-500 absolute bottom-3 right-0 left-0 uppercase tracking-widest text-center">KG</span>
                                     </div>
                                 </div>
                                 <div className="flex-1 space-y-3">
                                     <div className="p-8 dark-card text-center shadow-lg relative bg-zinc-950">
-                                        <span className="text-[9px] font-black text-[#666] uppercase tracking-widest block mb-1 text-center">Repetitions</span>
+                                        <span className="text-[9px] font-black text-[#666] uppercase tracking-widest block mb-1">Reps</span>
                                         <input type="number" value={inputReps} onChange={e => setInputReps(e.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
                                         <span className="text-[10px] font-black text-blue-500 absolute bottom-3 right-0 left-0 uppercase tracking-widest text-center">Reps</span>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button onClick={() => adjustReps(-1)} className="input-control-btn text-2xl">-</button>
-                                        <button onClick={() => adjustReps(1)} className="input-control-btn text-2xl">+</button>
-                                        <button onClick={() => setInputReps(8)} className="input-control-btn text-sm font-black">8</button>
-                                        <button onClick={() => setInputReps(12)} className="input-control-btn text-sm font-black">12</button>
-                                    </div>
                                 </div>
                             </div>
-                            
                             <button onClick={() => { 
                                 const n = {...workoutLog}; if(!n[ex.id]) n[ex.id]=[]; 
                                 n[ex.id].push({w: inputWeight, r: inputReps});
                                 setWorkoutLog(n); startTimer(ex.defaultPause);
-                            }} className="w-full py-7 bg-white text-black rounded-[32px] font-black text-xl shadow-[0_10px_30px_rgba(255,255,255,0.15)] active:scale-[0.96] transition-all uppercase tracking-widest italic">Log Set {logged.length + 1} / {ex.targetSets}</button>
-                            
-                            <div className="flex flex-wrap gap-2">
-                                {logged.map((s, i) => (
-                                    <div key={i} className="px-5 py-3 bg-blue-500/10 text-blue-400 rounded-2xl text-[10px] font-black border border-blue-500/20 animate-in fade-in zoom-in-95 uppercase tracking-widest">
-                                        Set {i+1}: {s.w}kg × {s.r}
-                                    </div>
-                                ))}
-                            </div>
+                            }} className="w-full py-7 bg-white text-black rounded-[32px] font-black text-xl shadow-lg active:scale-[0.96] transition-all uppercase italic">Log Set {logged.length + 1} / {ex.targetSets}</button>
                         </main>
-
                         <footer className="fixed bottom-0 left-0 right-0 p-6 bg-black/95 backdrop-blur-xl border-t border-[#1c1c1e] pb-12 flex gap-4 z-40 safe-bottom">
-                            <button disabled={currentExerciseIndex === 0} onClick={() => setCurrentExerciseIndex(i => i-1)} className="w-16 h-16 bg-[#1c1c1e] rounded-[24px] flex items-center justify-center text-[#9e9e9e] disabled:opacity-10 active:bg-zinc-800">
-                                <Icons.ChevronLeft />
-                            </button>
+                            <button disabled={currentExerciseIndex === 0} onClick={() => setCurrentExerciseIndex(i => i-1)} className="w-16 h-16 bg-[#1c1c1e] rounded-[24px] flex items-center justify-center text-[#9e9e9e]"><Icons.ChevronLeft /></button>
                             <button disabled={isSaving} onClick={async () => {
                                 if (currentExerciseIndex === activeRoutine.exercises.length - 1) {
                                     await finishWorkout();
                                 } else {
                                     setCurrentExerciseIndex(i => i + 1); setTimerActive(false); setTargetEndTime(null);
                                 }
-                            }} className={`flex-1 ${isSaving ? 'bg-zinc-800' : 'bg-blue-600'} text-white rounded-[24px] font-black flex items-center justify-center gap-3 active:bg-blue-500 uppercase tracking-widest text-[11px] italic shadow-lg`}>
+                            }} className={`flex-1 ${isSaving ? 'bg-zinc-800' : 'bg-blue-600'} text-white rounded-[24px] font-black flex items-center justify-center gap-3 uppercase tracking-widest text-[11px] italic shadow-lg`}>
                                 {isSaving ? 'Syncing...' : (currentExerciseIndex === activeRoutine.exercises.length - 1 ? 'End Session' : 'Next Movement')} 
                                 {!isSaving && <Icons.ChevronRight />}
                             </button>
@@ -504,20 +413,10 @@
 
             if (view === 'success') return (
                 <div className="min-h-screen bg-black flex flex-col items-center justify-center p-8 text-center space-y-12">
-                    <div className="relative">
-                         <div className="text-8xl animate-bounce">⚡️</div>
-                         <div className="absolute inset-0 blur-3xl bg-blue-500/30 -z-10 rounded-full"></div>
-                    </div>
+                    <div className="relative"><div className="text-8xl animate-bounce">⚡️</div><div className="absolute inset-0 blur-3xl bg-blue-500/30 -z-10 rounded-full"></div></div>
                     <div className="space-y-3">
                         <h2 className="text-5xl font-black text-white italic uppercase tracking-tighter leading-none">Session<br/>Complete</h2>
-                        <div className="flex items-center justify-center gap-2">
-                            <Icons.Cloud active={true} />
-                            <p className="text-emerald-500 font-black uppercase tracking-[0.3em] text-[10px]">Vault Secured</p>
-                        </div>
                     </div>
-                    <p className="text-zinc-500 text-lg font-medium max-w-[280px] italic">
-                        "{MOTIVATIONS[Math.floor(Math.random() * MOTIVATIONS.length)]}"
-                    </p>
                     <button onClick={() => setView('home')} className="w-full py-6 bg-white text-black rounded-[32px] font-black uppercase tracking-widest shadow-2xl italic">Return to Base</button>
                 </div>
             );
