@@ -93,10 +93,12 @@
             // the database that holds "library" exercises (routines are built
             // from these). if you want to persist user‑created routines we
             // recommend adding a second Notion database and putting its ID
-            // here or in an env var. for now we reuse the same ID for
-            // convenience.
+            // here or, preferably, in an environment variable via the
+            // /api/config route. when deployed to Vercel you can set
+            // EXERCISE_DB_ID, ROUTINE_DB_ID and LOG_DB_ID in the dashboard.
+            // the values below are merely defaults used during local dev.
             EXERCISE_DB_ID: '2b3fe23d5e3c8011ac26d67c56e8309f',
-            ROUTINE_DB_ID: '318fe23d5e3c80b1a89c000cdd4b42be',
+            ROUTINE_DB_ID: '318fe23d5e3c80388d2bd8dfbcfedf00',
             LOG_DB_ID: '313fe23d5e3c80e384b9c7b5f9917e84',
             MOTIVATIONS: [
                 "Stronger than yesterday.",
@@ -135,6 +137,13 @@
             // cache of exercises. we no longer persist a secret in localStorage.
             const [notionAvailable, setNotionAvailable] = useState(false);
             const [notionExercises, setNotionExercises] = useState(() => JSON.parse(localStorage.getItem('notion_exercises_cache') || '[]'));
+
+            // allow the three DB ids to be overridden by the config endpoint
+            // so we can store them as env vars in production instead of
+            // editing the static file every time.
+            const [exerciseDbId, setExerciseDbId] = useState(CONSTANTS.EXERCISE_DB_ID);
+            const [routineDbId, setRoutineDbId] = useState(CONSTANTS.ROUTINE_DB_ID);
+            const [logDbId, setLogDbId] = useState(CONSTANTS.LOG_DB_ID);
             
             const [activeRoutine, setActiveRoutine] = useState(null);
             const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -160,6 +169,9 @@
                         const r = await fetch('/api/config');
                         const j = await r.json();
                         setNotionAvailable(!!j.notionConfigured);
+                        if (j.EXERCISE_DB_ID) setExerciseDbId(j.EXERCISE_DB_ID);
+                        if (j.ROUTINE_DB_ID) setRoutineDbId(j.ROUTINE_DB_ID);
+                        if (j.LOG_DB_ID) setLogDbId(j.LOG_DB_ID);
                     } catch (e) {
                         // ignore
                     }
@@ -202,8 +214,8 @@
                     const response = await fetch('/api/notion', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            path: `databases/${CONSTANTS.EXERCISE_DB_ID}/query`,
+                            body: JSON.stringify({
+                                path: `databases/${exerciseDbId}/query`,
                             body: { filter: { property: "Routine", select: { is_not_empty: true } } }
                         })
                     });
@@ -238,7 +250,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            path: `databases/${CONSTANTS.ROUTINE_DB_ID}/query`,
+                            path: `databases/${routineDbId}/query`,
                             body: {}
                         })
                     });
@@ -283,7 +295,7 @@
                                 body: JSON.stringify({
                                     path: "pages",
                                     body: {
-                                        parent: { database_id: CONSTANTS.LOG_DB_ID },
+                                        parent: { database_id: logDbId },
                                         properties: {
                                             "Exercise": { title: [{ text: { content: exercise.name } }] },
                                             "Date": { date: { start: today } },
@@ -482,7 +494,7 @@
                                         body: JSON.stringify({
                                             path: 'pages',
                                             body: {
-                                                parent: { database_id: CONSTANTS.ROUTINE_DB_ID },
+                                                parent: { database_id: routineDbId },
                                                 properties: {
                                                     Name: { title: [{ text: { content: activeRoutine.name } }] },
                                                     JSON: { rich_text: [{ text: { content: JSON.stringify(activeRoutine) } }] }
