@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Gym Tracker</title>
+    <!--
+        The Notion integration key is no longer entered in the UI; it must be
+        configured as an environment variable on the server (e.g. Vercel's
+        dashboard). The frontend talks to the /api/notion proxy which reads
+        process.env.NOTION_API_KEY. See api/config.js for a helper route that
+        lets the client know whether the service is available.
+    -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -117,7 +124,10 @@
             const [view, setView] = useState('home');
             const [routines, setRoutines] = useState(() => JSON.parse(localStorage.getItem('gym_routines') || '[]'));
             const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('gym_history') || '[]'));
-            const [notionKey, setNotionKey] = useState(() => localStorage.getItem('notion_key') || '');
+            // the Notion API key is stored on the server (Vercel env var).
+            // the client only keeps a flag indicating availability and a local
+            // cache of exercises. we no longer persist a secret in localStorage.
+            const [notionAvailable, setNotionAvailable] = useState(false);
             const [notionExercises, setNotionExercises] = useState(() => JSON.parse(localStorage.getItem('notion_exercises_cache') || '[]'));
             
             const [activeRoutine, setActiveRoutine] = useState(null);
@@ -136,6 +146,19 @@
 
             const timerRef = useRef(null);
             const audioCtx = useRef(null);
+
+            // check server configuration on mount
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const r = await fetch('/api/config');
+                        const j = await r.json();
+                        setNotionAvailable(!!j.notionConfigured);
+                    } catch (e) {
+                        // ignore
+                    }
+                })();
+            }, []);
 
             useEffect(() => { localStorage.setItem('gym_routines', JSON.stringify(routines)); }, [routines]);
             useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
@@ -158,7 +181,7 @@
             }, [currentExerciseIndex, view, activeRoutine]);
 
             const fetchExercisesFromNotion = async () => {
-                if (!notionKey) return;
+                if (!notionAvailable) return;
                 setSyncStatus('syncing');
                 try {
                     const response = await fetch('/api/notion', {
@@ -166,7 +189,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             path: `databases/${CONSTANTS.EXERCISE_DB_ID}/query`,
-                            notionKey: notionKey,
                             body: { filter: { property: "Routine", select: { is_not_empty: true } } }
                         })
                     });
@@ -192,7 +214,7 @@
             };
 
             const pushToNotionLog = async () => {
-                if (!notionKey) return;
+                if (!notionAvailable) return;
                 setIsLogging(true);
                 const today = new Date().toISOString().split('T')[0];
                 
@@ -207,7 +229,6 @@
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     path: "pages",
-                                    notionKey: notionKey,
                                     body: {
                                         parent: { database_id: CONSTANTS.LOG_DB_ID },
                                         properties: {
@@ -256,7 +277,7 @@
                         <div>
                             <h1 className="text-xl font-bold text-[#e3e3e3] leading-none mb-1">{title}</h1>
                             <div className="flex items-center gap-1.5">
-                                <Icons.Cloud active={!!notionKey} />
+                                <Icons.Cloud active={notionAvailable} />
                                 <p className="text-[10px] text-[#9e9e9e] font-bold uppercase tracking-widest">{sub}</p>
                             </div>
                         </div>
@@ -275,10 +296,14 @@
                     <Header title="Settings" sub="Pulse Engine" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} />
                     <main className="p-6 space-y-6">
                         <div className="p-6 dark-card space-y-4">
-                            <label className="text-[10px] font-bold text-[#9e9e9e] uppercase tracking-widest block">Notion Secret Key</label>
-                            <input type="password" value={notionKey} onChange={e => {setNotionKey(e.target.value); localStorage.setItem('notion_key', e.target.value);}} placeholder="secret_..." className="w-full p-4 bg-[#131314] text-white rounded-2xl border border-[#3c4043] outline-none" />
+                            <p className="text-sm text-[#e3e3e3]">
+                                Notion integration is handled server‑side. Set the
+                                <code className="font-mono">NOTION_API_KEY</code> environment
+                                variable and redeploy. Until then synchronization is
+                                disabled.
+                            </p>
                         </div>
-                        <button onClick={fetchExercisesFromNotion} className="w-full py-5 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs">
+                        <button disabled={!notionAvailable} onClick={fetchExercisesFromNotion} className="w-full py-5 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs">
                             {syncStatus === 'syncing' ? 'Syncing...' : 'Sync Notion Library'}
                         </button>
                     </main>
@@ -287,7 +312,7 @@
 
             if (view === 'home') return (
                 <div className="min-h-screen bg-[#131314]">
-                    <Header title="Training" sub={notionKey ? "Synced" : "Local Only"} />
+                    <Header title="Training" sub={notionAvailable ? "Synced" : "Local Only"} />
                     <main className="p-6 space-y-4 pb-32">
                         {routines.map(r => (
                             <div key={r.id} className="p-5 dark-card flex items-center justify-between shadow-sm active:bg-[#28292c] transition-colors">
