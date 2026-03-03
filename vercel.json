@@ -1,0 +1,15 @@
+{
+  "public": ".",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "env": {
+    "NOTION_API_KEY": "@notion_api_key",
+    "EXERCISE_DB_ID": "@exercise_db_id",
+    "ROUTINE_DB_ID": "@routine_db_id",
+    "LOG_DB_ID": "@log_db_id"
+  }
+}
