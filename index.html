@@ -293,7 +293,7 @@
                                         }
                                     }
                                 })
-                            );
+                            });
                             const text = await resp.text();
                             if (!resp.ok) {
                                 console.error('Notion log write failed', resp.status, text);
@@ -397,7 +397,16 @@
                 </div>
             );
 
-            if (view === 'planner') return (
+            if (view === 'planner') {
+                if (!activeRoutine) return (
+                    <div className="min-h-screen bg-[#131314] flex items-center justify-center">
+                        <div className="p-6 dark-card text-center">
+                            <p className="mb-4">No routine selected.</p>
+                            <button onClick={() => setView('home')} className="py-3 px-6 bg-[#8ab4f8] rounded-xl">Return Home</button>
+                        </div>
+                    </div>
+                );
+                return (
                 <div className="min-h-screen bg-[#131314] pb-48">
                     <Header title="Planner" sub="Protocol Editor" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={
                         <button onClick={() => setShowConfirmDelete(!showConfirmDelete)} className={`p-3 rounded-full ${showConfirmDelete ? 'bg-red-600 text-white' : 'bg-[#28292c] text-[#9e9e9e]'}`}><Icons.Trash /></button>
@@ -502,6 +511,14 @@
             );
 
             if (view === 'active') {
+                if (!activeRoutine) return (
+                    <div className="min-h-screen bg-[#131314] flex items-center justify-center">
+                        <div className="p-6 dark-card text-center">
+                            <p className="mb-4">No active routine — select one from Home.</p>
+                            <button onClick={() => setView('home')} className="py-3 px-6 bg-[#8ab4f8] rounded-xl">Return Home</button>
+                        </div>
+                    </div>
+                );
                 const ex = activeRoutine.exercises[currentExerciseIndex];
                 const logged = workoutLog[ex.id] || [];
                 const progress = ((currentExerciseIndex + (logged.length / Math.max(1, ex.targetSets))) / activeRoutine.exercises.length) * 100;
