@@ -234,7 +234,7 @@
             const fetchRoutinesFromNotion = async () => {
                 if (!notionAvailable) return;
                 try {
-                    const response = await fetch('/api/notion', {
+                    const resp = await fetch('/api/notion', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -242,7 +242,12 @@
                             body: {}
                         })
                     });
-                    const data = await response.json();
+                    const text = await resp.text();
+                    if (!resp.ok) {
+                        console.error('Failed to fetch routines from Notion', resp.status, text);
+                        return;
+                    }
+                    const data = JSON.parse(text);
                     const fetched = data.results.map(page => {
                         const p = page.properties;
                         // assume you have a property `JSON` with the routine
@@ -272,7 +277,7 @@
                     if (!exercise) continue;
                     for (const set of workoutLog[exId]) {
                         try {
-                            await fetch("/api/notion", {
+                            const resp = await fetch("/api/notion", {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -288,8 +293,16 @@
                                         }
                                     }
                                 })
-                            });
-                        } catch (e) { console.error(e); }
+                            );
+                            const text = await resp.text();
+                            if (!resp.ok) {
+                                console.error('Notion log write failed', resp.status, text);
+                            } else {
+                                console.debug('Notion log write success', text);
+                            }
+                        } catch (e) {
+                            console.error('Network error while writing log to Notion', e);
+                        }
                     }
                 }
                 
@@ -454,7 +467,7 @@
                             // blob property named "JSON" so we can reconstruct later
                             if (notionAvailable) {
                                 try {
-                                    await fetch('/api/notion', {
+                                    const resp = await fetch('/api/notion', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
@@ -468,8 +481,18 @@
                                             }
                                         })
                                     });
+                                    const text = await resp.text();
+                                    if (!resp.ok) {
+                                        console.error('failed to save routine to notion', resp.status, text);
+                                        alert('Failed to save routine to Notion (see console)');
+                                    } else {
+                                        console.debug('saved routine to notion', text);
+                                        // optionally update local routines with any server id
+                                        alert('Routine saved to Notion');
+                                    }
                                 } catch (e) {
                                     console.error('failed to save routine to notion', e);
+                                    alert('Network error saving routine (see console)');
                                 }
                             }
                             setView('home');
@@ -527,23 +550,36 @@
                         </main>
 
                         {timerActive && (
-                            <div className="fixed inset-0 z-[100] bg-[#131314]/95 flex flex-col items-center justify-center p-8 animate-in fade-in duration-300">
-                                <div className="text-[#8ab4f8] uppercase tracking-[0.3em] font-black text-sm mb-4">RECOVERY</div>
-                                <div className="text-[160px] font-black text-white leading-none timer-animate mb-12 tabular-nums tracking-tighter">
-                                    {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
+                            <div className="fixed right-6 bottom-6 z-[100] p-4 bg-[#131314]/85 border border-[#28292c] rounded-2xl backdrop-blur-md shadow-lg flex items-center gap-4" style={{pointerEvents: 'auto'}}>
+                                <div className="flex flex-col items-center">
+                                    <div className="text-[12px] text-[#8ab4f8] uppercase tracking-[0.3em] font-black mb-2">RECOVERY</div>
+                                    <div className="text-[64px] font-black text-white leading-none timer-animate tabular-nums tracking-tighter">
+                                        {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
+                                    </div>
                                 </div>
-                                <button onClick={() => {setTimerActive(false); setTargetEndTime(null);}} className="w-full py-6 bg-white text-[#131314] rounded-[32px] font-black uppercase tracking-widest shadow-2xl">Skip Rest</button>
+                                <div className="flex flex-col gap-2">
+                                    <button onClick={() => { setTimerActive(false); setTargetEndTime(null); }} className="py-2 px-4 bg-white text-[#131314] rounded-xl font-black">Skip</button>
+                                    <button onClick={() => { setTimeLeft(prev => Math.max(0, prev - 15)); }} className="py-2 px-4 bg-[#28292c] rounded-xl text-[#9e9e9e]">-15s</button>
+                                </div>
                             </div>
                         )}
 
                         <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314]/95 border-t border-[#28292c] flex gap-4 safe-bottom backdrop-blur-xl">
                             <button disabled={currentExerciseIndex === 0} onClick={() => setCurrentExerciseIndex(i => i-1)} className="p-5 bg-[#28292c] rounded-2xl text-zinc-500"><Icons.ChevronLeft /></button>
                             <button disabled={isLogging} onClick={async () => {
-                                if (currentExerciseIndex === activeRoutine.exercises.length - 1) await pushToNotionLog();
-                                else { setCurrentExerciseIndex(i => i + 1); setTimerActive(false); }
-                            }} className="flex-1 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold uppercase italic shadow-lg">
-                                {isLogging ? "Syncing..." : (currentExerciseIndex === activeRoutine.exercises.length-1 ? "End Session" : "Next Move")}
-                            </button>
+                                    if (currentExerciseIndex === activeRoutine.exercises.length - 1) {
+                                        // on final step, push and show result feedback
+                                        try {
+                                            await pushToNotionLog();
+                                            alert('Session logged to Notion');
+                                        } catch (e) {
+                                            console.error('Error during final sync', e);
+                                            alert('Failed to sync session. Check console for details.');
+                                        }
+                                    } else { setCurrentExerciseIndex(i => i + 1); setTimerActive(false); }
+                                }} className="flex-1 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold uppercase italic shadow-lg">
+                                    {isLogging ? "Syncing..." : (currentExerciseIndex === activeRoutine.exercises.length-1 ? "End Session" : "Next Move")}
+                                </button>
                         </footer>
                     </div>
                 );
