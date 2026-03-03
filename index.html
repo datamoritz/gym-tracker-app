@@ -90,7 +90,13 @@
         const { useState, useEffect, useRef } = React;
 
         const CONSTANTS = {
+            // the database that holds "library" exercises (routines are built
+            // from these). if you want to persist user‑created routines we
+            // recommend adding a second Notion database and putting its ID
+            // here or in an env var. for now we reuse the same ID for
+            // convenience.
             EXERCISE_DB_ID: '2b3fe23d5e3c8011ac26d67c56e8309f',
+            ROUTINE_DB_ID: '318fe23d5e3c80b1a89c000cdd4b42be',
             LOG_DB_ID: '313fe23d5e3c80e384b9c7b5f9917e84',
             MOTIVATIONS: [
                 "Stronger than yesterday.",
@@ -161,6 +167,15 @@
             }, []);
 
             useEffect(() => { localStorage.setItem('gym_routines', JSON.stringify(routines)); }, [routines]);
+
+            // when the server side key is available, pull routines (and
+            // exercises) automatically so the user doesn't have to hit sync.
+            useEffect(() => {
+                if (notionAvailable) {
+                    fetchExercisesFromNotion();
+                    fetchRoutinesFromNotion();
+                }
+            }, [notionAvailable]);
             useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
 
             // PRE-LOAD WEIGHT/REPS WHEN EXERCISE CHANGES
@@ -211,6 +226,39 @@
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus('idle'), 2000);
                 } catch (err) { setSyncStatus('error'); }
+            };
+
+            // fetch persisted routines from a second notion database (if you
+            // choose to create one). results are transformed into the same
+            // local format used by `routines` so they can be edited.
+            const fetchRoutinesFromNotion = async () => {
+                if (!notionAvailable) return;
+                try {
+                    const response = await fetch('/api/notion', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: `databases/${CONSTANTS.ROUTINE_DB_ID}/query`,
+                            body: {}
+                        })
+                    });
+                    const data = await response.json();
+                    const fetched = data.results.map(page => {
+                        const p = page.properties;
+                        // assume you have a property `JSON` with the routine
+                        // serialized; make sure to add this to your database
+                        try {
+                            return JSON.parse(p.JSON.rich_text[0].plain_text);
+                        } catch {
+                            return null;
+                        }
+                    }).filter(Boolean);
+                    if (fetched.length) {
+                        setRoutines(fetched);
+                    }
+                } catch (e) {
+                    console.error('failed to load routines from notion', e);
+                }
             };
 
             const pushToNotionLog = async () => {
@@ -395,11 +443,37 @@
                         </div>
                     </main>
                     <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314]/90 border-t border-[#28292c] safe-bottom">
-                        <button onClick={() => { setRoutines(prev => {
-                            const exists = prev.find(r => r.id === activeRoutine.id);
-                            if(exists) return prev.map(r => r.id === activeRoutine.id ? activeRoutine : r);
-                            return [...prev, activeRoutine];
-                        }); setView('home'); }} className="w-full py-5 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold uppercase">Save Protocol</button>
+                        <button onClick={async () => {
+                            // update local copy
+                            setRoutines(prev => {
+                                const exists = prev.find(r => r.id === activeRoutine.id);
+                                if(exists) return prev.map(r => r.id === activeRoutine.id ? activeRoutine : r);
+                                return [...prev, activeRoutine];
+                            });
+                            // also save to notion if available; using a simple JSON
+                            // blob property named "JSON" so we can reconstruct later
+                            if (notionAvailable) {
+                                try {
+                                    await fetch('/api/notion', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            path: 'pages',
+                                            body: {
+                                                parent: { database_id: CONSTANTS.ROUTINE_DB_ID },
+                                                properties: {
+                                                    Name: { title: [{ text: { content: activeRoutine.name } }] },
+                                                    JSON: { rich_text: [{ text: { content: JSON.stringify(activeRoutine) } }] }
+                                                }
+                                            }
+                                        })
+                                    });
+                                } catch (e) {
+                                    console.error('failed to save routine to notion', e);
+                                }
+                            }
+                            setView('home');
+                        }} className="w-full py-5 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold uppercase">Save Protocol</button>
                     </footer>
                 </div>
             );
