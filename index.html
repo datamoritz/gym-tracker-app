@@ -335,12 +335,15 @@
                         <input value={activeRoutine.name} onChange={e => setActiveRoutine({...activeRoutine, name: e.target.value})} className="text-3xl font-bold bg-transparent w-full text-white italic outline-none" />
                         <div className="flex flex-wrap gap-2">
                             {notionExercises.map((ex, i) => (
-                                <button key={i} onClick={() => setActiveRoutine({...activeRoutine, exercises: [...activeRoutine.exercises, {id:Math.random(), name:ex.name, defaultPause:ex.pause, targetSets:ex.sets, suggestedWeight: ex.weight, targetReps: 10}]})} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold">{ex.name}</button>
+                                <button key={i} onClick={() => setActiveRoutine({...activeRoutine, exercises: [...activeRoutine.exercises, {id:Math.random(), name:ex.name, defaultPause:ex.pause, targetSets:ex.sets, suggestedWeight: ex.weight, targetReps: 10}]})} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2"><span className="bg-[#3c4043] px-1.5 rounded text-[8px] text-[#8ab4f8]">{ex.tag}</span> {ex.name}</button>
                             ))}
                         </div>
                         {activeRoutine.exercises.map((ex, i) => (
                             <div key={ex.id} className="p-5 dark-card space-y-4">
-                                <input value={ex.name} onChange={e => { const n={...activeRoutine}; n.exercises[i].name=e.target.value; setActiveRoutine(n); }} className="font-bold bg-transparent outline-none w-full" />
+                                <div className="flex justify-between items-center">
+                                    <input value={ex.name} onChange={e => { const n={...activeRoutine}; n.exercises[i].name=e.target.value; setActiveRoutine(n); }} className="font-bold bg-transparent outline-none w-full" />
+                                    <button onClick={() => { const n={...activeRoutine}; n.exercises.splice(i,1); setActiveRoutine(n); }} className="p-2 text-[#3c4043] hover:text-[#9e9e9e]"><Icons.Trash /></button>
+                                </div>
                                 <div className="grid grid-cols-4 gap-2">
                                     {['Sets', 'Reps', 'KG', 'Rest'].map(lbl => (
                                         <input key={lbl} type="number" value={lbl === 'Sets' ? ex.targetSets : lbl === 'Reps' ? ex.targetReps : lbl === 'KG' ? ex.suggestedWeight : ex.defaultPause} onChange={e => {
@@ -369,13 +372,38 @@
                         <Header title={ex.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} setView={setView} />
                         <main className="p-6 space-y-8 pb-48">
                             <div className="flex gap-4">
-                                <input type="number" step="0.5" value={inputWeight} onChange={e => setInputWeight(e.target.value)} className="flex-1 p-8 dark-card text-center text-5xl font-black bg-transparent outline-none" />
-                                <input type="number" value={inputReps} onChange={e => setInputReps(e.target.value)} className="flex-1 p-8 dark-card text-center text-5xl font-black bg-transparent outline-none" />
+                                <div className="flex-1 space-y-3">
+                                    <div className="p-8 dark-card text-center relative bg-[#1e1f20]">
+                                        <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Load</span>
+                                        <input type="number" step="0.5" value={inputWeight} onChange={e => setInputWeight(e.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
+                                        <span className="text-[10px] font-black text-[#8ab4f8] uppercase absolute bottom-3 left-0 right-0">KG</span>
+                                    </div>
+                                </div>
+                                <div className="flex-1 space-y-3">
+                                    <div className="p-8 dark-card text-center relative bg-[#1e1f20]">
+                                        <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Reps</span>
+                                        <input type="number" value={inputReps} onChange={e => setInputReps(e.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
+                                        <span className="text-[10px] font-black text-[#8ab4f8] uppercase absolute bottom-3 left-0 right-0">REPS</span>
+                                    </div>
+                                </div>
                             </div>
                             <button onClick={() => { const n = {...workoutLog}; if(!n[ex.id]) n[ex.id]=[]; n[ex.id].push({w: inputWeight, r: inputReps}); setWorkoutLog(n); startTimer(ex.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length+1} / {ex.targetSets}</button>
                             <div className="flex flex-wrap gap-2">{logged.map((s, i) => <div key={i} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {i+1}: {s.w}KG × {s.r}</div>)}</div>
                         </main>
-                        {timerActive && <div className="fixed right-6 bottom-6 p-4 bg-[#131314]/85 border border-[#28292c] rounded-2xl backdrop-blur-md text-64px font-black text-white">{Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}</div>}
+                        {timerActive && (
+                            <div className="fixed right-6 bottom-6 z-[100] p-4 bg-[#131314]/85 border border-[#28292c] rounded-2xl backdrop-blur-md shadow-lg flex items-center gap-4" style={{pointerEvents: 'auto'}}>
+                                <div className="flex flex-col items-center">
+                                    <div className="text-[12px] text-[#8ab4f8] uppercase tracking-[0.3em] font-black mb-2">RECOVERY</div>
+                                    <div className="text-[64px] font-black text-white leading-none timer-animate tabular-nums tracking-tighter">
+                                        {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <button onClick={() => { setTimerActive(false); setTargetEndTime(null); }} className="py-2 px-4 bg-white text-black rounded-xl font-black text-sm">Skip</button>
+                                    <button onClick={() => { setTimeLeft(prev => Math.max(0, prev - 15)); }} className="py-2 px-4 bg-[#28292c] rounded-xl text-[#9e9e9e] text-sm">-15s</button>
+                                </div>
+                            </div>
+                        )}
                         <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c] flex gap-4">
                             <button disabled={currentExerciseIndex === 0} onClick={() => setCurrentExerciseIndex(i => i-1)} className="p-5 bg-[#28292c] rounded-2xl"><Icons.ChevronLeft /></button>
                             <button disabled={isLogging} onClick={() => currentExerciseIndex === activeRoutine.exercises.length - 1 ? pushToNotionLog() : setCurrentExerciseIndex(i => i + 1)} className="flex-1 bg-[#8ab4f8] text-black rounded-[24px] font-bold italic">{isLogging ? "Syncing..." : (currentExerciseIndex === activeRoutine.exercises.length-1 ? "End Session" : "Next Move")}</button>
