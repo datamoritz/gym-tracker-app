@@ -89,6 +89,30 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // Header component is defined outside of App so it isn't recreated on
+        // every render. notionAvailable is passed as a prop to avoid relying on
+        // the parent closure.
+        const Header = ({ title, sub, leftAction, rightAction, notionAvailable }) => (
+            <header className="glass-header pt-14 pb-5 px-6 sticky top-0 z-50 flex justify-between items-end safe-top">
+                <div className="flex items-center gap-3">
+                    {leftAction || <Icons.Logo />}
+                    <div>
+                        <h1 className="text-xl font-bold text-[#e3e3e3] leading-none mb-1">{title}</h1>
+                        <div className="flex items-center gap-1.5">
+                            <Icons.Cloud active={notionAvailable} />
+                            <p className="text-[10px] text-[#9e9e9e] font-bold uppercase tracking-widest">{sub}</p>
+                        </div>
+                    </div>
+                </div>
+                {rightAction || (
+                    <div className="flex gap-2">
+                         <button onClick={() => setView('history')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.History /></button>
+                         <button onClick={() => setView('settings')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Settings /></button>
+                    </div>
+                )}
+            </header>
+        );
+
         const CONSTANTS = {
             // the database that holds "library" exercises (routines are built
             // from these). if you want to persist user‑created routines we
@@ -192,11 +216,17 @@
 
             // PRE-LOAD WEIGHT/REPS WHEN EXERCISE CHANGES
             useEffect(() => {
-                if (view === 'active' && activeRoutine) {
+                if (view === 'active' && activeRoutine && activeRoutine.exercises) {
+                    if (activeRoutine.exercises.length === 0) {
+                        console.warn('activeRoutine has no exercises in preload effect', activeRoutine);
+                        return;
+                    }
                     const ex = activeRoutine.exercises[currentExerciseIndex];
-                    if (!ex) return;
+                    if (!ex) {
+                        console.warn('preload effect: no exercise at index', currentExerciseIndex, activeRoutine);
+                        return;
+                    }
                     const logs = workoutLog[ex.id] || [];
-                    // If we already logged sets, use last set's data, else use definition
                     if (logs.length > 0) {
                         setInputWeight(logs[logs.length - 1].w);
                         setInputReps(logs[logs.length - 1].r);
@@ -205,7 +235,7 @@
                         setInputReps(ex.targetReps || 10);
                     }
                 }
-            }, [currentExerciseIndex, view, activeRoutine]);
+            }, [currentExerciseIndex, view, activeRoutine, workoutLog]);
 
             const fetchExercisesFromNotion = async () => {
                 if (!notionAvailable) return;
@@ -366,7 +396,7 @@
 
             if (view === 'settings') return (
                 <div className="min-h-screen bg-[#131314]">
-                    <Header title="Settings" sub="Pulse Engine" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} />
+                    <Header title="Settings" sub="Pulse Engine" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} />
                     <main className="p-6 space-y-6">
                         <div className="p-6 dark-card space-y-4">
                             <p className="text-sm text-[#e3e3e3]">
@@ -385,13 +415,13 @@
 
             if (view === 'home') return (
                 <div className="min-h-screen bg-[#131314]">
-                    <Header title="Training" sub={notionAvailable ? "Synced" : "Local Only"} />
+                    <Header title="Training" sub={notionAvailable ? "Synced" : "Local Only"} notionAvailable={notionAvailable} />
                     <main className="p-6 space-y-4 pb-32">
                         {routines.map(r => (
                             <div key={r.id} className="p-5 dark-card flex items-center justify-between shadow-sm active:bg-[#28292c] transition-colors">
                                 <div className="flex-1">
                                     <h3 className="text-lg font-bold text-[#e3e3e3]">{r.name}</h3>
-                                    <p className="text-[10px] text-[#9e9e9e] font-bold uppercase tracking-widest mt-1">{r.exercises.length} Exercises</p>
+                                    <p className="text-[10px] text-[#9e9e9e] font-bold uppercase tracking-widest mt-1">{(r.exercises||[]).length} Exercises</p>
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={() => { setActiveRoutine(r); setView('planner'); }} className="p-3 text-[#9e9e9e]"><Icons.Settings /></button>
@@ -426,7 +456,7 @@
                 <div className="min-h-screen bg-[#131314] pb-48">
                     <Header title="Planner" sub="Protocol Editor" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={
                         <button onClick={() => setShowConfirmDelete(!showConfirmDelete)} className={`p-3 rounded-full ${showConfirmDelete ? 'bg-red-600 text-white' : 'bg-[#28292c] text-[#9e9e9e]'}`}><Icons.Trash /></button>
-                    } />
+                    } notionAvailable={notionAvailable} />
                     <main className="p-6 space-y-6">
                         {showConfirmDelete && (
                             <div className="p-5 bg-red-900/20 border border-red-900/50 rounded-2xl animate-in zoom-in-95">
@@ -571,7 +601,7 @@
                         <div className="fixed top-0 left-0 right-0 h-1 bg-[#28292c] z-[60] safe-top">
                             <div className="h-full bg-[#8ab4f8] transition-all duration-500 shadow-[0_0_10px_rgba(138,180,248,0.5)]" style={{width: `${progress}%`}} />
                         </div>
-                        <Header title={ex.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} />
+                        <Header title={ex.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} />
                         <main className="p-6 space-y-8 pb-48">
                             <div className="flex gap-4">
                                 <div className="flex-1 space-y-3">
@@ -656,7 +686,7 @@
 
             if (view === 'history') return (
                 <div className="min-h-screen bg-[#131314]">
-                    <Header title="Vault" sub="Archives" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} />
+                    <Header title="Vault" sub="Archives" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} />
                     <main className="p-6 space-y-4">
                         {history.map(h => (
                             <div key={h.id} className="p-5 dark-card flex justify-between items-start">
@@ -673,8 +703,6 @@
 
             return null;
         };
-
-        }
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
