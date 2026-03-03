@@ -4,13 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Gym Tracker</title>
-    <!--
-        The Notion integration key is no longer entered in the UI; it must be
-        configured as an environment variable on the server (e.g. Vercel's
-        dashboard). The frontend talks to the /api/notion proxy which reads
-        process.env.NOTION_API_KEY. See api/config.js for a helper route that
-        lets the client know whether the service is available.
-    -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -29,6 +22,7 @@
         .safe-top { padding-top: env(safe-area-inset-top); }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
         
+        /* Fixed CSS selector for control buttons */
         .input-control-btn {
             background: #28292c;
             border: 1px solid #3c4043;
@@ -89,10 +83,28 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // Header component is defined outside of App so it isn't recreated on
-        // every render. notionAvailable is passed as a prop to avoid relying on
-        // the parent closure.
-        const Header = ({ title, sub, leftAction, rightAction, notionAvailable }) => (
+        const Icons = {
+            Logo: () => (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="9" width="4" height="6" rx="2" fill="#8ab4f8"/>
+                    <rect x="18" y="9" width="4" height="6" rx="2" fill="#8ab4f8"/>
+                    <path d="M6 12H18" stroke="#8ab4f8" strokeWidth="3" strokeLinecap="round"/>
+                    <circle cx="12" cy="12" r="2" fill="#e3e3e3"/>
+                </svg>
+            ),
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+            Play: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+            ChevronRight: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
+            ChevronLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>,
+            History: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+            Cloud: ({ active }) => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={active ? "#10b981" : "none"} stroke={active ? "#10b981" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.2-4-4.5A7 7 0 1 0 5 13c0 .3 0 .7.1 1a4.5 4.5 0 1 0 4.4 5h8z"/></svg>
+        };
+
+        // Header component now properly receives setView to avoid ReferenceErrors
+        const Header = ({ title, sub, leftAction, rightAction, notionAvailable, setView }) => (
             <header className="glass-header pt-14 pb-5 px-6 sticky top-0 z-50 flex justify-between items-end safe-top">
                 <div className="flex items-center gap-3">
                     {leftAction || <Icons.Logo />}
@@ -114,13 +126,6 @@
         );
 
         const CONSTANTS = {
-            // the database that holds "library" exercises (routines are built
-            // from these). if you want to persist user‑created routines we
-            // recommend adding a second Notion database and putting its ID
-            // here or, preferably, in an environment variable via the
-            // /api/config route. when deployed to Vercel you can set
-            // EXERCISE_DB_ID, ROUTINE_DB_ID and LOG_DB_ID in the dashboard.
-            // the values below are merely defaults used during local dev.
             EXERCISE_DB_ID: '2b3fe23d5e3c8011ac26d67c56e8309f',
             ROUTINE_DB_ID: '318fe23d5e3c80388d2bd8dfbcfedf00',
             LOG_DB_ID: '313fe23d5e3c80e384b9c7b5f9917e84',
@@ -132,39 +137,13 @@
             ]
         };
 
-        const Icons = {
-            Logo: () => (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="2" y="9" width="4" height="6" rx="2" fill="#8ab4f8"/>
-                    <rect x="18" y="9" width="4" height="6" rx="2" fill="#8ab4f8"/>
-                    <path d="M6 12H18" stroke="#8ab4f8" strokeWidth="3" strokeLinecap="round"/>
-                    <circle cx="12" cy="12" r="2" fill="#e3e3e3"/>
-                </svg>
-            ),
-            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-            Play: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
-            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
-            ChevronRight: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
-            ChevronLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>,
-            History: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-            Cloud: ({ active }) => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={active ? "#10b981" : "none"} stroke={active ? "#10b981" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.2-4-4.5A7 7 0 1 0 5 13c0 .3 0 .7.1 1a4.5 4.5 0 1 0 4.4 5h8z"/></svg>
-        };
-
         const App = () => {
             const [view, setView] = useState('home');
             const [routines, setRoutines] = useState(() => JSON.parse(localStorage.getItem('gym_routines') || '[]'));
             const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('gym_history') || '[]'));
-            // the Notion API key is stored on the server (Vercel env var).
-            // the client only keeps a flag indicating availability and a local
-            // cache of exercises. we no longer persist a secret in localStorage.
             const [notionAvailable, setNotionAvailable] = useState(false);
             const [notionExercises, setNotionExercises] = useState(() => JSON.parse(localStorage.getItem('notion_exercises_cache') || '[]'));
 
-            // allow the three DB ids to be overridden by the config endpoint
-            // so we can store them as env vars in production instead of
-            // editing the static file every time.
             const [exerciseDbId, setExerciseDbId] = useState(CONSTANTS.EXERCISE_DB_ID);
             const [routineDbId, setRoutineDbId] = useState(CONSTANTS.ROUTINE_DB_ID);
             const [logDbId, setLogDbId] = useState(CONSTANTS.LOG_DB_ID);
@@ -184,9 +163,7 @@
             const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
             const timerRef = useRef(null);
-            const audioCtx = useRef(null);
 
-            // check server configuration on mount
             useEffect(() => {
                 (async () => {
                     try {
@@ -196,36 +173,19 @@
                         if (j.EXERCISE_DB_ID) setExerciseDbId(j.EXERCISE_DB_ID);
                         if (j.ROUTINE_DB_ID) setRoutineDbId(j.ROUTINE_DB_ID);
                         if (j.LOG_DB_ID) setLogDbId(j.LOG_DB_ID);
-                    } catch (e) {
-                        // ignore
-                    }
+                    } catch (e) {}
                 })();
             }, []);
 
             useEffect(() => { localStorage.setItem('gym_routines', JSON.stringify(routines)); }, [routines]);
-
-            // when the server side key is available, pull routines (and
-            // exercises) automatically so the user doesn't have to hit sync.
-            useEffect(() => {
-                if (notionAvailable) {
-                    fetchExercisesFromNotion();
-                    fetchRoutinesFromNotion();
-                }
-            }, [notionAvailable]);
+            useEffect(() => { if (notionAvailable) { fetchExercisesFromNotion(); fetchRoutinesFromNotion(); } }, [notionAvailable]);
             useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
 
-            // PRE-LOAD WEIGHT/REPS WHEN EXERCISE CHANGES
             useEffect(() => {
                 if (view === 'active' && activeRoutine && activeRoutine.exercises) {
-                    if (activeRoutine.exercises.length === 0) {
-                        console.warn('activeRoutine has no exercises in preload effect', activeRoutine);
-                        return;
-                    }
+                    if (activeRoutine.exercises.length === 0) return;
                     const ex = activeRoutine.exercises[currentExerciseIndex];
-                    if (!ex) {
-                        console.warn('preload effect: no exercise at index', currentExerciseIndex, activeRoutine);
-                        return;
-                    }
+                    if (!ex) return;
                     const logs = workoutLog[ex.id] || [];
                     if (logs.length > 0) {
                         setInputWeight(logs[logs.length - 1].w);
@@ -244,8 +204,8 @@
                     const response = await fetch('/api/notion', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                path: `databases/${exerciseDbId}/query`,
+                        body: JSON.stringify({
+                            path: `databases/${exerciseDbId}/query`,
                             body: { filter: { property: "Routine", select: { is_not_empty: true } } }
                         })
                     });
@@ -270,87 +230,50 @@
                 } catch (err) { setSyncStatus('error'); }
             };
 
-            // fetch persisted routines from a second notion database (if you
-            // choose to create one). results are transformed into the same
-            // local format used by `routines` so they can be edited.
             const fetchRoutinesFromNotion = async () => {
                 if (!notionAvailable) return;
                 try {
                     const resp = await fetch('/api/notion', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            path: `databases/${routineDbId}/query`,
-                            body: {}
-                        })
+                        body: JSON.stringify({ path: `databases/${routineDbId}/query`, body: {} })
                     });
-                    const text = await resp.text();
-                    if (!resp.ok) {
-                        console.error('Failed to fetch routines from Notion', resp.status, text);
-                        return;
-                    }
-                    const data = JSON.parse(text);
+                    const data = await resp.json();
                     const fetched = data.results.map(page => {
-                        const p = page.properties;
-                        // assume you have a property `JSON` with the routine
-                        // serialized; make sure to add this to your database
-                        try {
-                            return JSON.parse(p.JSON.rich_text[0].plain_text);
-                        } catch {
-                            return null;
-                        }
+                        try { return JSON.parse(page.properties.JSON.rich_text[0].plain_text); } catch { return null; }
                     }).filter(Boolean);
-                    if (fetched.length) {
-                        setRoutines(fetched);
-                    }
-                } catch (e) {
-                    console.error('failed to load routines from notion', e);
-                }
+                    if (fetched.length) setRoutines(fetched);
+                } catch (e) {}
             };
 
             const pushToNotionLog = async () => {
                 if (!notionAvailable) return;
                 setIsLogging(true);
                 const today = new Date().toISOString().split('T')[0];
-                
-                // Detailed per-set logging
                 for (const exId in workoutLog) {
                     const exercise = activeRoutine.exercises.find(e => e.id.toString() === exId.toString());
                     if (!exercise) continue;
                     for (const set of workoutLog[exId]) {
-                        try {
-                            const resp = await fetch("/api/notion", {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    path: "pages",
-                                    body: {
-                                        parent: { database_id: logDbId },
-                                        properties: {
-                                            "Exercise": { title: [{ text: { content: exercise.name } }] },
-                                            "Date": { date: { start: today } },
-                                            "Weight": { number: parseFloat(set.w) || 0 },
-                                            "Reps": { number: parseInt(set.r) || 0 },
-                                            "Rest": { number: parseInt(exercise.defaultPause) || 0 }
-                                        }
+                        await fetch("/api/notion", {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                path: "pages",
+                                body: {
+                                    parent: { database_id: logDbId },
+                                    properties: {
+                                        "Exercise": { title: [{ text: { content: exercise.name } }] },
+                                        "Date": { date: { start: today } },
+                                        "Weight": { number: parseFloat(set.w) || 0 },
+                                        "Reps": { number: parseInt(set.r) || 0 },
+                                        "Rest": { number: parseInt(exercise.defaultPause) || 0 }
                                     }
-                                })
-                            });
-                            const text = await resp.text();
-                            if (!resp.ok) {
-                                console.error('Notion log write failed', resp.status, text);
-                            } else {
-                                console.debug('Notion log write success', text);
-                            }
-                        } catch (e) {
-                            console.error('Network error while writing log to Notion', e);
-                        }
+                                }
+                            })
+                        });
                     }
                 }
-                
-                // Also save to local history
-                setHistory(prev => [{ id: Date.now(), date: today, routineName: activeRoutine.name, summary: "Notion Synced" }, ...prev]);
-                
+                setHistory(prev => [{ id: Date.now(), date: today, routineName: activeRoutine.name, summary: "Synced" }, ...prev]);
                 setIsLogging(false);
                 confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
                 setView('success');
@@ -373,336 +296,112 @@
                 return () => clearInterval(timerRef.current);
             }, [timerActive, targetEndTime]);
 
-            const Header = ({ title, sub, leftAction, rightAction }) => (
-                <header className="glass-header pt-14 pb-5 px-6 sticky top-0 z-50 flex justify-between items-end safe-top">
-                    <div className="flex items-center gap-3">
-                        {leftAction || <Icons.Logo />}
-                        <div>
-                            <h1 className="text-xl font-bold text-[#e3e3e3] leading-none mb-1">{title}</h1>
-                            <div className="flex items-center gap-1.5">
-                                <Icons.Cloud active={notionAvailable} />
-                                <p className="text-[10px] text-[#9e9e9e] font-bold uppercase tracking-widest">{sub}</p>
-                            </div>
-                        </div>
-                    </div>
-                    {rightAction || (
-                        <div className="flex gap-2">
-                             <button onClick={() => setView('history')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.History /></button>
-                             <button onClick={() => setView('settings')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Settings /></button>
-                        </div>
-                    )}
-                </header>
-            );
-
             if (view === 'settings') return (
                 <div className="min-h-screen bg-[#131314]">
-                    <Header title="Settings" sub="Pulse Engine" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} />
+                    <Header title="Settings" sub="Pulse Engine" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} setView={setView} />
                     <main className="p-6 space-y-6">
-                        <div className="p-6 dark-card space-y-4">
-                            <p className="text-sm text-[#e3e3e3]">
-                                Notion integration is handled server‑side. Set the
-                                <code className="font-mono">NOTION_API_KEY</code> environment
-                                variable and redeploy. Until then synchronization is
-                                disabled.
-                            </p>
-                        </div>
-                        <button disabled={!notionAvailable} onClick={fetchExercisesFromNotion} className="w-full py-5 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs">
-                            {syncStatus === 'syncing' ? 'Syncing...' : 'Sync Notion Library'}
-                        </button>
+                        <div className="p-6 dark-card space-y-4"><p className="text-sm">Set NOTION_API_KEY in Vercel env vars.</p></div>
+                        <button disabled={!notionAvailable} onClick={fetchExercisesFromNotion} className="w-full py-5 bg-[#8ab4f8] text-black rounded-[24px] font-bold">Sync Notion Library</button>
                     </main>
                 </div>
             );
 
             if (view === 'home') return (
                 <div className="min-h-screen bg-[#131314]">
-                    <Header title="Training" sub={notionAvailable ? "Synced" : "Local Only"} notionAvailable={notionAvailable} />
+                    <Header title="Training" sub={notionAvailable ? "Synced" : "Local Only"} notionAvailable={notionAvailable} setView={setView} />
                     <main className="p-6 space-y-4 pb-32">
                         {routines.map(r => (
-                            <div key={r.id} className="p-5 dark-card flex items-center justify-between shadow-sm active:bg-[#28292c] transition-colors">
+                            <div key={r.id} className="p-5 dark-card flex items-center justify-between">
                                 <div className="flex-1">
-                                    <h3 className="text-lg font-bold text-[#e3e3e3]">{r.name}</h3>
-                                    <p className="text-[10px] text-[#9e9e9e] font-bold uppercase tracking-widest mt-1">{(r.exercises||[]).length} Exercises</p>
+                                    <h3 className="text-lg font-bold">{r.name}</h3>
+                                    <p className="text-[10px] text-[#9e9e9e] font-bold uppercase">{(r.exercises||[]).length} Exercises</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={() => { setActiveRoutine(r); setView('planner'); }} className="p-3 text-[#9e9e9e]"><Icons.Settings /></button>
-                                    <button
-                                        disabled={!r.exercises || r.exercises.length === 0}
-                                        title={r.exercises && r.exercises.length > 0 ? 'Start' : 'Add exercises first'}
-                                        onClick={() => { setActiveRoutine(r); setCurrentExerciseIndex(0); setWorkoutLog({}); setView('active'); }}
-                                        className="w-12 h-12 bg-[#8ab4f8] text-[#131314] rounded-[20px] flex items-center justify-center shadow-lg active:scale-90 transition-transform disabled:opacity-50 disabled:cursor-not-allowed">
-                                        <Icons.Play />
-                                    </button>
+                                    <button onClick={() => { setActiveRoutine(r); setView('planner'); }} className="p-3"><Icons.Settings /></button>
+                                    <button disabled={!r.exercises?.length} onClick={() => { setActiveRoutine(r); setCurrentExerciseIndex(0); setWorkoutLog({}); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
                                 </div>
                             </div>
                         ))}
-                        <button onClick={() => { const nr={id:Date.now(), name:"New Session", exercises:[]}; setActiveRoutine(nr); setView('planner'); }} className="w-full py-10 border-2 border-dashed border-[#3c4043] rounded-[32px] flex flex-col items-center gap-2 text-[#9e9e9e] active:bg-[#1e1f20]">
-                            <Icons.Plus />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">Create Routine</span>
-                        </button>
+                        <button onClick={() => { setActiveRoutine({id:Date.now(), name:"New Session", exercises:[]}); setView('planner'); }} className="w-full py-10 border-2 border-dashed border-[#3c4043] rounded-[32px] flex flex-col items-center gap-2 text-[#9e9e9e]"><Icons.Plus /><span>Create Routine</span></button>
                     </main>
                 </div>
             );
 
-            if (view === 'planner') {
-                if (!activeRoutine) return (
-                    <div className="min-h-screen bg-[#131314] flex items-center justify-center">
-                        <div className="p-6 dark-card text-center">
-                            <p className="mb-4">No routine selected.</p>
-                            <button onClick={() => setView('home')} className="py-3 px-6 bg-[#8ab4f8] rounded-xl">Return Home</button>
-                        </div>
-                    </div>
-                );
-                return (
+            if (view === 'planner') return (
                 <div className="min-h-screen bg-[#131314] pb-48">
-                    <Header title="Planner" sub="Protocol Editor" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={
-                        <button onClick={() => setShowConfirmDelete(!showConfirmDelete)} className={`p-3 rounded-full ${showConfirmDelete ? 'bg-red-600 text-white' : 'bg-[#28292c] text-[#9e9e9e]'}`}><Icons.Trash /></button>
-                    } notionAvailable={notionAvailable} />
+                    <Header title="Planner" sub="Protocol Editor" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={<button onClick={() => setShowConfirmDelete(!showConfirmDelete)} className="p-3 bg-[#28292c] rounded-full"><Icons.Trash /></button>} notionAvailable={notionAvailable} setView={setView} />
                     <main className="p-6 space-y-6">
-                        {showConfirmDelete && (
-                            <div className="p-5 bg-red-900/20 border border-red-900/50 rounded-2xl animate-in zoom-in-95">
-                                <p className="text-xs text-red-200 font-bold text-center mb-3">Delete this routine?</p>
-                                <div className="flex gap-2">
-                                    <button onClick={() => { setRoutines(routines.filter(r => r.id !== activeRoutine.id)); setView('home'); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl text-[10px] font-bold">DELETE</button>
-                                    <button onClick={() => setShowConfirmDelete(false)} className="flex-1 bg-[#131314] text-[#9e9e9e] py-3 rounded-xl text-[10px] font-bold border border-[#3c4043]">CANCEL</button>
-                                </div>
-                            </div>
-                        )}
-                        <input value={activeRoutine.name} onChange={e => setActiveRoutine({...activeRoutine, name: e.target.value})} className="text-3xl font-bold bg-transparent w-full outline-none text-white italic" />
-                        
-                        <section>
-                            <h4 className="text-[10px] font-bold text-[#9e9e9e] uppercase tracking-widest mb-3 ml-1">Add From Library</h4>
-                            <div className="flex flex-wrap gap-2">
-                                {notionExercises.map((ex, i) => (
-                                    <button key={i} onClick={() => setActiveRoutine({...activeRoutine, exercises: [...activeRoutine.exercises, {id:Math.random(), name:ex.name, defaultPause:ex.pause, targetSets:ex.sets, suggestedWeight: ex.weight, targetReps: 10}]})} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2">
-                                        <span className="bg-[#3c4043] px-1 rounded text-[8px] text-[#8ab4f8]">{ex.tag}</span> {ex.name}
-                                    </button>
-                                ))}
-                            </div>
-                        </section>
-
-                        <div className="space-y-3">
-                            {activeRoutine.exercises.map((ex, i) => (
-                                <div key={ex.id} className="p-5 dark-card space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <input value={ex.name} onChange={e => { const n={...activeRoutine}; n.exercises[i].name=e.target.value; setActiveRoutine(n); }} className="font-bold text-white bg-transparent outline-none w-full" />
-                                        <button onClick={() => { const n={...activeRoutine}; n.exercises.splice(i,1); setActiveRoutine(n); }} className="p-2 text-[#3c4043]"><Icons.Trash /></button>
-                                    </div>
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {['Sets', 'Reps', 'KG', 'Rest'].map(lbl => (
-                                            <div key={lbl}>
-                                                <span className="text-[8px] font-black text-zinc-600 uppercase block mb-1 text-center">{lbl}</span>
-                                                <input type="number" 
-                                                    value={lbl === 'Sets' ? ex.targetSets : lbl === 'Reps' ? ex.targetReps : lbl === 'KG' ? ex.suggestedWeight : ex.defaultPause} 
-                                                    onChange={e => {
-                                                        const val = parseFloat(e.target.value) || 0;
-                                                        const n = {...activeRoutine};
-                                                        if(lbl === 'Sets') n.exercises[i].targetSets = val;
-                                                        if(lbl === 'Reps') n.exercises[i].targetReps = val;
-                                                        if(lbl === 'KG') n.exercises[i].suggestedWeight = val;
-                                                        if(lbl === 'Rest') n.exercises[i].defaultPause = val;
-                                                        setActiveRoutine(n);
-                                                    }}
-                                                    className="planner-input" />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                        {showConfirmDelete && <div className="p-5 bg-red-900/20 border border-red-900 rounded-2xl"><button onClick={() => { setRoutines(routines.filter(r => r.id !== activeRoutine.id)); setView('home'); }} className="w-full bg-red-600 py-3 rounded-xl font-bold">DELETE</button></div>}
+                        <input value={activeRoutine.name} onChange={e => setActiveRoutine({...activeRoutine, name: e.target.value})} className="text-3xl font-bold bg-transparent w-full text-white italic outline-none" />
+                        <div className="flex flex-wrap gap-2">
+                            {notionExercises.map((ex, i) => (
+                                <button key={i} onClick={() => setActiveRoutine({...activeRoutine, exercises: [...activeRoutine.exercises, {id:Math.random(), name:ex.name, defaultPause:ex.pause, targetSets:ex.sets, suggestedWeight: ex.weight, targetReps: 10}]})} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold">{ex.name}</button>
                             ))}
                         </div>
+                        {activeRoutine.exercises.map((ex, i) => (
+                            <div key={ex.id} className="p-5 dark-card space-y-4">
+                                <input value={ex.name} onChange={e => { const n={...activeRoutine}; n.exercises[i].name=e.target.value; setActiveRoutine(n); }} className="font-bold bg-transparent outline-none w-full" />
+                                <div className="grid grid-cols-4 gap-2">
+                                    {['Sets', 'Reps', 'KG', 'Rest'].map(lbl => (
+                                        <input key={lbl} type="number" value={lbl === 'Sets' ? ex.targetSets : lbl === 'Reps' ? ex.targetReps : lbl === 'KG' ? ex.suggestedWeight : ex.defaultPause} onChange={e => {
+                                            const val = parseFloat(e.target.value) || 0;
+                                            const n = {...activeRoutine};
+                                            if(lbl === 'Sets') n.exercises[i].targetSets = val;
+                                            if(lbl === 'Reps') n.exercises[i].targetReps = val;
+                                            if(lbl === 'KG') n.exercises[i].suggestedWeight = val;
+                                            if(lbl === 'Rest') n.exercises[i].defaultPause = val;
+                                            setActiveRoutine(n);
+                                        }} className="planner-input" />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </main>
-                    <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314]/90 border-t border-[#28292c] safe-bottom">
-                        <button onClick={async () => {
-                            // update local copy
-                            setRoutines(prev => {
-                                const exists = prev.find(r => r.id === activeRoutine.id);
-                                if(exists) return prev.map(r => r.id === activeRoutine.id ? activeRoutine : r);
-                                return [...prev, activeRoutine];
-                            });
-                            // also save to notion if available; using a simple JSON
-                            // blob property named "JSON" so we can reconstruct later
-                            if (notionAvailable) {
-                                try {
-                                    const resp = await fetch('/api/notion', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                            path: 'pages',
-                                            body: {
-                                                parent: { database_id: routineDbId },
-                                                properties: {
-                                                    Name: { title: [{ text: { content: activeRoutine.name } }] },
-                                                    JSON: { rich_text: [{ text: { content: JSON.stringify(activeRoutine) } }] }
-                                                }
-                                            }
-                                        })
-                                    });
-                                    const text = await resp.text();
-                                    if (!resp.ok) {
-                                        console.error('failed to save routine to notion', resp.status, text);
-                                        alert('Failed to save routine to Notion (see console)');
-                                    } else {
-                                        console.debug('saved routine to notion', text);
-                                        // optionally update local routines with any server id
-                                        alert('Routine saved to Notion');
-                                    }
-                                } catch (e) {
-                                    console.error('failed to save routine to notion', e);
-                                    alert('Network error saving routine (see console)');
-                                }
-                            }
-                            setView('home');
-                        }} className="w-full py-5 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold uppercase">Save Protocol</button>
-                    </footer>
+                    <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c]"><button onClick={() => { setRoutines(prev => prev.find(r => r.id === activeRoutine.id) ? prev.map(r => r.id === activeRoutine.id ? activeRoutine : r) : [...prev, activeRoutine]); setView('home'); }} className="w-full py-5 bg-[#8ab4f8] text-black rounded-[24px] font-bold">Save Protocol</button></footer>
                 </div>
             );
 
             if (view === 'active') {
-                if (!activeRoutine) return (
-                    <div className="min-h-screen bg-[#131314] flex items-center justify-center">
-                        <div className="p-6 dark-card text-center">
-                            <p className="mb-4">No active routine — select one from Home.</p>
-                            <button onClick={() => setView('home')} className="py-3 px-6 bg-[#8ab4f8] rounded-xl">Return Home</button>
-                        </div>
-                    </div>
-                );
-                // guard against a routine with no exercises (new/empty routine)
-                if (!activeRoutine.exercises || activeRoutine.exercises.length === 0) {
-                    return (
-                        <div className="min-h-screen bg-[#131314] flex items-center justify-center">
-                            <div className="p-6 dark-card text-center">
-                                <p className="mb-4">This routine has no exercises yet.</p>
-                                <button onClick={() => setView('planner')} className="py-3 px-6 bg-[#8ab4f8] rounded-xl">Edit Routine</button>
-                            </div>
-                        </div>
-                    );
-                }
-
-                // attempt to read the current exercise; if we somehow have an
-                // out‑of‑bounds index or corrupted data, bail gracefully rather
-                // than letting React throw an error and blank the screen.
                 const ex = activeRoutine.exercises[currentExerciseIndex];
-                if (!ex) {
-                    console.error('Active view: exercise missing', {activeRoutine, currentExerciseIndex});
-                    return (
-                        <div className="min-h-screen bg-[#131314] flex items-center justify-center">
-                            <div className="p-6 dark-card text-center">
-                                <p className="mb-4">Unable to load the next exercise.</p>
-                                <button onClick={() => setView('home')} className="py-3 px-6 bg-[#8ab4f8] rounded-xl">Go Home</button>
-                            </div>
-                        </div>
-                    );
-                }
-                // `ex` already defined in the guard above, reuse it here
                 const logged = workoutLog[ex.id] || [];
-                const progress = ((currentExerciseIndex + (logged.length / Math.max(1, ex.targetSets || 1))) / Math.max(1, activeRoutine.exercises.length)) * 100;
-
                 return (
-                    <div className="min-h-screen bg-[#131314] relative">
-                        <div className="fixed top-0 left-0 right-0 h-1 bg-[#28292c] z-[60] safe-top">
-                            <div className="h-full bg-[#8ab4f8] transition-all duration-500 shadow-[0_0_10px_rgba(138,180,248,0.5)]" style={{width: `${progress}%`}} />
-                        </div>
-                        <Header title={ex.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} />
+                    <div className="min-h-screen bg-[#131314]">
+                        <Header title={ex.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} setView={setView} />
                         <main className="p-6 space-y-8 pb-48">
                             <div className="flex gap-4">
-                                <div className="flex-1 space-y-3">
-                                    <div className="p-8 dark-card text-center relative bg-[#1e1f20]">
-                                        <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Load</span>
-                                        <input type="number" step="0.5" value={inputWeight} onChange={e => setInputWeight(e.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
-                                        <span className="text-[10px] font-black text-[#8ab4f8] uppercase absolute bottom-3 left-0 right-0">KG</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button onClick={() => setInputWeight(prev => Math.max(0, parseFloat(prev)-2.5))} className="input-control-btn">-2.5</button>
-                                        <button onClick={() => setInputWeight(prev => parseFloat(prev)+2.5)} className="input-control-btn">+2.5</button>
-                                    </div>
-                                </div>
-                                <div className="flex-1 space-y-3">
-                                    <div className="p-8 dark-card text-center relative bg-[#1e1f20]">
-                                        <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Reps</span>
-                                        <input type="number" value={inputReps} onChange={e => setInputReps(e.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
-                                        <span className="text-[10px] font-black text-[#8ab4f8] uppercase absolute bottom-3 left-0 right-0">REPS</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button onClick={() => setInputReps(prev => Math.max(0, parseInt(prev)-1))} className="input-control-btn">-1</button>
-                                        <button onClick={() => setInputReps(prev => parseInt(prev)+1)} className="input-control-btn">+1</button>
-                                    </div>
-                                </div>
+                                <input type="number" step="0.5" value={inputWeight} onChange={e => setInputWeight(e.target.value)} className="flex-1 p-8 dark-card text-center text-5xl font-black bg-transparent outline-none" />
+                                <input type="number" value={inputReps} onChange={e => setInputReps(e.target.value)} className="flex-1 p-8 dark-card text-center text-5xl font-black bg-transparent outline-none" />
                             </div>
-                            <button onClick={() => {
-                                const n = {...workoutLog}; if(!n[ex.id]) n[ex.id]=[];
-                                n[ex.id].push({w: inputWeight, r: inputReps});
-                                setWorkoutLog(n); startTimer(ex.defaultPause);
-                            }} className="w-full py-7 bg-white text-[#131314] rounded-[28px] font-black text-xl uppercase italic shadow-xl">Log Set {logged.length+1} / {ex.targetSets}</button>
-                            <div className="flex flex-wrap gap-2">
-                                {logged.map((s, i) => (
-                                    <div key={i} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] border border-[#8ab4f8]/20 rounded-xl text-[10px] font-black">SET {i+1}: {s.w}KG × {s.r}</div>
-                                ))}
-                            </div>
+                            <button onClick={() => { const n = {...workoutLog}; if(!n[ex.id]) n[ex.id]=[]; n[ex.id].push({w: inputWeight, r: inputReps}); setWorkoutLog(n); startTimer(ex.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length+1} / {ex.targetSets}</button>
+                            <div className="flex flex-wrap gap-2">{logged.map((s, i) => <div key={i} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {i+1}: {s.w}KG × {s.r}</div>)}</div>
                         </main>
-
-                        {timerActive && (
-                            <div className="fixed right-6 bottom-6 z-[100] p-4 bg-[#131314]/85 border border-[#28292c] rounded-2xl backdrop-blur-md shadow-lg flex items-center gap-4" style={{pointerEvents: 'auto'}}>
-                                <div className="flex flex-col items-center">
-                                    <div className="text-[12px] text-[#8ab4f8] uppercase tracking-[0.3em] font-black mb-2">RECOVERY</div>
-                                    <div className="text-[64px] font-black text-white leading-none timer-animate tabular-nums tracking-tighter">
-                                        {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
-                                    </div>
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                    <button onClick={() => { setTimerActive(false); setTargetEndTime(null); }} className="py-2 px-4 bg-white text-[#131314] rounded-xl font-black">Skip</button>
-                                    <button onClick={() => { setTimeLeft(prev => Math.max(0, prev - 15)); }} className="py-2 px-4 bg-[#28292c] rounded-xl text-[#9e9e9e]">-15s</button>
-                                </div>
-                            </div>
-                        )}
-
-                        <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314]/95 border-t border-[#28292c] flex gap-4 safe-bottom backdrop-blur-xl">
-                            <button disabled={currentExerciseIndex === 0} onClick={() => setCurrentExerciseIndex(i => i-1)} className="p-5 bg-[#28292c] rounded-2xl text-zinc-500"><Icons.ChevronLeft /></button>
-                            <button disabled={isLogging} onClick={async () => {
-                                    if (currentExerciseIndex === activeRoutine.exercises.length - 1) {
-                                        // on final step, push and show result feedback
-                                        try {
-                                            await pushToNotionLog();
-                                            alert('Session logged to Notion');
-                                        } catch (e) {
-                                            console.error('Error during final sync', e);
-                                            alert('Failed to sync session. Check console for details.');
-                                        }
-                                    } else { setCurrentExerciseIndex(i => i + 1); setTimerActive(false); }
-                                }} className="flex-1 bg-[#8ab4f8] text-[#131314] rounded-[24px] font-bold uppercase italic shadow-lg">
-                                    {isLogging ? "Syncing..." : (currentExerciseIndex === activeRoutine.exercises.length-1 ? "End Session" : "Next Move")}
-                                </button>
+                        {timerActive && <div className="fixed right-6 bottom-6 p-4 bg-[#131314]/85 border border-[#28292c] rounded-2xl backdrop-blur-md text-64px font-black text-white">{Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}</div>}
+                        <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c] flex gap-4">
+                            <button disabled={currentExerciseIndex === 0} onClick={() => setCurrentExerciseIndex(i => i-1)} className="p-5 bg-[#28292c] rounded-2xl"><Icons.ChevronLeft /></button>
+                            <button disabled={isLogging} onClick={() => currentExerciseIndex === activeRoutine.exercises.length - 1 ? pushToNotionLog() : setCurrentExerciseIndex(i => i + 1)} className="flex-1 bg-[#8ab4f8] text-black rounded-[24px] font-bold italic">{isLogging ? "Syncing..." : (currentExerciseIndex === activeRoutine.exercises.length-1 ? "End Session" : "Next Move")}</button>
                         </footer>
                     </div>
                 );
             }
 
             if (view === 'success') return (
-                <div className="min-h-screen bg-[#131314] flex flex-col items-center justify-center p-10 text-center space-y-12">
+                <div className="min-h-screen bg-[#131314] flex flex-col items-center justify-center p-10 space-y-12">
                     <div className="text-8xl animate-bounce">💪</div>
-                    <h2 className="text-5xl font-black text-white italic uppercase tracking-tighter">Session<br/>Complete</h2>
-                    <p className="text-zinc-500 text-lg italic max-w-xs">"{CONSTANTS.MOTIVATIONS[Math.floor(Math.random()*CONSTANTS.MOTIVATIONS.length)]}"</p>
-                    <button onClick={() => setView('home')} className="w-full py-6 bg-white text-[#131314] rounded-3xl font-black uppercase italic tracking-widest">Return Home</button>
+                    <h2 className="text-5xl font-black italic uppercase">Complete</h2>
+                    <button onClick={() => setView('home')} className="w-full py-6 bg-white text-black rounded-3xl font-black italic">Return Home</button>
                 </div>
             );
 
             if (view === 'history') return (
                 <div className="min-h-screen bg-[#131314]">
-                    <Header title="Vault" sub="Archives" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} />
-                    <main className="p-6 space-y-4">
-                        {history.map(h => (
-                            <div key={h.id} className="p-5 dark-card flex justify-between items-start">
-                                <div>
-                                    <h4 className="font-bold text-white italic text-lg">{h.routineName}</h4>
-                                    <p className="text-[10px] text-zinc-500 font-bold uppercase mt-1">{h.date}</p>
-                                </div>
-                                <span className="text-[8px] font-black text-[#10b981] border border-[#10b981]/30 bg-[#10b981]/10 px-2 py-1 rounded-full uppercase">SECURED</span>
-                            </div>
-                        ))}
-                    </main>
+                    <Header title="Vault" sub="Archives" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} setView={setView} />
+                    <main className="p-6 space-y-4">{history.map(h => <div key={h.id} className="p-5 dark-card"><h4>{h.routineName}</h4><p className="text-[10px] text-zinc-500">{h.date}</p></div>)}</main>
                 </div>
             );
 
             return null;
         };
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
