@@ -151,6 +151,7 @@
             const [activeRoutine, setActiveRoutine] = useState(null);
             const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
             const [workoutLog, setWorkoutLog] = useState({});
+            const [workoutNotes, setWorkoutNotes] = useState({});
             const [inputWeight, setInputWeight] = useState(0);
             const [inputReps, setInputReps] = useState(10);
             
@@ -277,7 +278,8 @@
                                             "Date": { date: { start: today } },
                                             "Weight": { number: parseFloat(set.w) || 0 },
                                             "Reps": { number: parseInt(set.r) || 0 },
-                                            "Rest": { number: parseInt(exercise.defaultPause) || 0 }
+                                            "Rest": { number: parseInt(exercise.defaultPause) || 0 },
+                                            ...(workoutNotes[exId] ? { "Notes": { rich_text: [{ text: { content: workoutNotes[exId] } }] } } : {})
                                         }
                                     }
                                 })
@@ -401,7 +403,7 @@
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={() => { setActiveRoutine(r); setView('planner'); }} className="p-3"><Icons.Settings /></button>
-                                    <button disabled={!r.exercises?.length} onClick={() => { setActiveRoutine(r); setCurrentExerciseIndex(0); setWorkoutLog({}); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
+                                    <button disabled={!r.exercises?.length} onClick={() => { setActiveRoutine(r); setCurrentExerciseIndex(0); setWorkoutLog({}); setWorkoutNotes({}); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
                                 </div>
                             </div>
                         ))}
@@ -508,6 +510,10 @@
                             </div>
                             <button onClick={() => { const n = {...workoutLog}; if(!n[ex.id]) n[ex.id]=[]; n[ex.id].push({w: inputWeight, r: inputReps}); setWorkoutLog(n); startTimer(ex.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length+1} / {ex.targetSets}</button>
                             <div className="flex flex-wrap gap-2">{logged.map((s, i) => <div key={i} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {i+1}: {s.w}KG × {s.r}</div>)}</div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-zinc-500 uppercase">Notes</label>
+                                <textarea value={workoutNotes[ex.id] || ''} onChange={e => setWorkoutNotes(prev => ({...prev, [ex.id]: e.target.value}))} placeholder="How did it feel? Any adjustments..." rows={2} className="w-full bg-[#1e1f20] border border-[#3c4043] rounded-2xl p-4 text-sm text-[#e3e3e3] outline-none resize-none placeholder-[#3c4043] focus:border-[#8ab4f8]/40" />
+                            </div>
                         </main>
                         {timerActive && (
                             <div className="fixed bottom-[6.5rem] left-4 right-4 z-40 flex items-center gap-4 px-5 py-4 rounded-2xl shadow-2xl" style={{background: 'linear-gradient(135deg, #ff6b35, #f7931e)'}}>
