@@ -164,6 +164,7 @@
             const [isSaving, setIsSaving] = useState(false);
 
             const timerRef = useRef(null);
+            const audioCtxRef = useRef(null);
 
             useEffect(() => {
                 (async () => {
@@ -214,7 +215,7 @@
                     const fetched = data.results.map(page => {
                         const p = page.properties;
                         const weightStr = p["Weight"]?.rich_text[0]?.plain_text || "0";
-                        const weight = parseFloat(weightStr.match(/\d+/)?.[0] || 0);
+                        const weight = parseFloat(weightStr.match(/[\d.]+/)?.[0] || 0);
                         return {
                             id: page.id,
                             name: p["Exercise Name"]?.title[0]?.plain_text || "Untitled",
@@ -339,6 +340,13 @@
             };
 
             const startTimer = (seconds) => {
+                try {
+                    if (!audioCtxRef.current) {
+                        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                    } else if (audioCtxRef.current.state === 'suspended') {
+                        audioCtxRef.current.resume();
+                    }
+                } catch (e) {}
                 setTargetEndTime(Date.now() + (seconds * 1000));
                 setTimeLeft(seconds);
                 setTimerActive(true);
@@ -353,16 +361,17 @@
                             setTimerActive(false); 
                             setTargetEndTime(null);
                             try {
-                                const beep = new (window.AudioContext || window.webkitAudioContext)();
-                                const osc = beep.createOscillator();
-                                const gain = beep.createGain();
-                                osc.frequency.value = 1000;
+                                const ctx = audioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)();
+                                if (ctx.state === 'suspended') ctx.resume();
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.frequency.value = 880;
                                 osc.connect(gain);
-                                gain.connect(beep.destination);
-                                gain.gain.setValueAtTime(0.3, beep.currentTime);
-                                gain.gain.exponentialRampToValueAtTime(0.01, beep.currentTime + 0.5);
-                                osc.start(beep.currentTime);
-                                osc.stop(beep.currentTime + 0.5);
+                                gain.connect(ctx.destination);
+                                gain.gain.setValueAtTime(0.4, ctx.currentTime);
+                                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+                                osc.start(ctx.currentTime);
+                                osc.stop(ctx.currentTime + 0.8);
                             } catch (e) {}
                         }
                     }, 500);
@@ -408,8 +417,8 @@
                         {showConfirmDelete && <div className="p-5 bg-red-900/20 border border-red-900 rounded-2xl"><button onClick={() => { setRoutines(routines.filter(r => r.id !== activeRoutine.id)); setView('home'); }} className="w-full bg-red-600 py-3 rounded-xl font-bold">DELETE</button></div>}
                         <input value={activeRoutine.name} onChange={e => setActiveRoutine({...activeRoutine, name: e.target.value})} className="text-3xl font-bold bg-transparent w-full text-white italic outline-none" />
                         <div className="flex flex-wrap gap-2">
-                            {notionExercises.map((ex, i) => (
-                                <button key={i} onClick={() => setActiveRoutine({...activeRoutine, exercises: [...activeRoutine.exercises, {id:Math.random(), name:ex.name, defaultPause:ex.pause, targetSets:ex.sets, suggestedWeight: ex.weight, targetReps: 10}]})} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2"><span className="bg-[#3c4043] px-1.5 rounded text-[8px] text-[#8ab4f8]">{ex.tag}</span> {ex.name}</button>
+                            {[...notionExercises].sort((a, b) => (a.tag || '').localeCompare(b.tag || '')).map((ex, i) => (
+                                <button key={i} onClick={() => setActiveRoutine({...activeRoutine, exercises: [...activeRoutine.exercises, {id:Math.random(), name:ex.name, defaultPause:ex.pause, targetSets:ex.sets, suggestedWeight: ex.weight, targetReps: 10}]})} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2 transition-all duration-100 active:scale-95 active:bg-[#8ab4f8]/20 active:border-[#8ab4f8]/50"><span className="bg-[#3c4043] px-1.5 rounded text-[8px] text-[#8ab4f8]">{ex.tag}</span> {ex.name}</button>
                             ))}
                         </div>
                         {activeRoutine.exercises.map((ex, i) => (
@@ -469,6 +478,7 @@
                 return (
                     <div className="min-h-screen bg-[#131314]">
                         <Header title={ex.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} setView={setView} />
+                        <div className="h-1 bg-[#28292c]"><div className="h-1 bg-[#8ab4f8] transition-all duration-300" style={{width: `${((currentExerciseIndex + 1) / activeRoutine.exercises.length) * 100}%`}}></div></div>
                         <main className="p-6 space-y-8 pb-48">
                             <div className="flex gap-4">
                                 <div className="flex-1 space-y-3">
@@ -508,13 +518,13 @@
                                     </span>
                                 </div>
                                 <div className="flex gap-2 ml-auto">
-                                    <button onClick={() => { setTimeLeft(prev => Math.max(0, prev - 15)); }} className="py-2 px-3 bg-white/20 border border-white/30 text-white rounded-xl font-black text-sm">-15s</button>
+                                    <button onClick={() => { setTargetEndTime(prev => Math.max(Date.now() + 500, prev - 15000)); }} className="py-2 px-3 bg-white/20 border border-white/30 text-white rounded-xl font-black text-sm">-15s</button>
                                     <button onClick={() => { setTimerActive(false); setTargetEndTime(null); }} className="py-2 px-4 bg-white text-[#f7931e] rounded-xl font-black text-sm">Skip</button>
                                 </div>
                             </div>
                         )}
                         <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c] flex gap-4">
-                            <button disabled={currentExerciseIndex === 0} onClick={() => setCurrentExerciseIndex(i => i-1)} className="p-5 bg-[#28292c] rounded-2xl"><Icons.ChevronLeft /></button>
+                            <button onClick={() => currentExerciseIndex === 0 ? setView('home') : setCurrentExerciseIndex(i => i-1)} className="p-5 bg-[#28292c] rounded-2xl"><Icons.ChevronLeft /></button>
                             <button disabled={isLogging} onClick={() => currentExerciseIndex === activeRoutine.exercises.length - 1 ? pushToNotionLog() : setCurrentExerciseIndex(i => i + 1)} className="flex-1 bg-[#8ab4f8] text-black rounded-[24px] font-bold italic">{isLogging ? "Syncing..." : (currentExerciseIndex === activeRoutine.exercises.length-1 ? "End Session" : "Next Move")}</button>
                         </footer>
                     </div>
