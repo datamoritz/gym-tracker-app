@@ -163,6 +163,9 @@
             const [isLogging, setIsLogging] = useState(false);
             const [showConfirmDelete, setShowConfirmDelete] = useState(false);
             const [isSaving, setIsSaving] = useState(false);
+            const [aiFeedback, setAiFeedback] = useState(null);
+            const [aiFeedbackLoading, setAiFeedbackLoading] = useState(false);
+            const [userProfile, setUserProfile] = useState(() => JSON.parse(localStorage.getItem('gym_user_profile') || '{"bodyweight":75,"experienceLevel":"intermediate","goal":"hypertrophy","weeklySplit":"Push Pull Legs"}'));
 
             const timerRef = useRef(null);
             const audioCtxRef = useRef(null);
@@ -183,6 +186,7 @@
             useEffect(() => { localStorage.setItem('gym_routines', JSON.stringify(routines)); }, [routines]);
             useEffect(() => { if (notionAvailable) { fetchExercisesFromNotion(); fetchRoutinesFromNotion(); } }, [notionAvailable]);
             useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
+            useEffect(() => { localStorage.setItem('gym_user_profile', JSON.stringify(userProfile)); }, [userProfile]);
 
             useEffect(() => {
                 if (view === 'active' && activeRoutine && activeRoutine.exercises) {
@@ -261,6 +265,22 @@
             const pushToNotionLog = async () => {
                 setIsLogging(true);
                 const today = new Date().toISOString().split('T')[0];
+                const workoutPayload = {
+                    workout_type: activeRoutine.name,
+                    date: today,
+                    exercises: Object.entries(workoutLog).map(([exId, sets]) => {
+                        const exercise = activeRoutine.exercises.find(e => e.id.toString() === exId.toString());
+                        if (!exercise) return null;
+                        return {
+                            name: exercise.name,
+                            sets: sets.length,
+                            reps: sets.map(s => parseInt(s.r)),
+                            weight: sets.map(s => parseFloat(s.w)),
+                            rest_sec: parseInt(exercise.defaultPause) || 60,
+                            ...(workoutNotes[exId] ? { notes: workoutNotes[exId] } : {})
+                        };
+                    }).filter(Boolean)
+                };
                 if (notionAvailable) {
                     for (const exId in workoutLog) {
                         const exercise = activeRoutine.exercises.find(e => e.id.toString() === exId.toString());
@@ -291,6 +311,7 @@
                 setIsLogging(false);
                 confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
                 setView('success');
+                fetchAIFeedback(workoutPayload);
             };
 
             const saveRoutineToNotion = async (routine) => {
@@ -327,6 +348,31 @@
                         return { ...routine, notionPageId: data.id };
                     }
                 } catch (e) { return routine; }
+            };
+
+            const fetchAIFeedback = async (workoutPayload) => {
+                setAiFeedbackLoading(true);
+                setAiFeedback(null);
+                try {
+                    const resp = await fetch('/api/feedback', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            workout: workoutPayload,
+                            profile: {
+                                experience_level: userProfile.experienceLevel,
+                                bodyweight: parseFloat(userProfile.bodyweight) || 75,
+                                goal: userProfile.goal,
+                                weekly_split: userProfile.weeklySplit
+                            }
+                        })
+                    });
+                    const data = await resp.json();
+                    setAiFeedback(data.feedback || 'No feedback available.');
+                } catch (e) {
+                    setAiFeedback('Could not generate feedback.');
+                }
+                setAiFeedbackLoading(false);
             };
 
             const saveRoutine = async () => {
@@ -385,8 +431,18 @@
                 <div className="min-h-screen bg-[#131314]">
                     <Header title="Settings" sub="Pulse Engine" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} setView={setView} />
                     <main className="p-6 space-y-6">
-                        <div className="p-6 dark-card space-y-4"><p className="text-sm">Set NOTION_API_KEY in Vercel env vars.</p></div>
-                        <button disabled={!notionAvailable} onClick={fetchExercisesFromNotion} className="w-full py-5 bg-[#8ab4f8] text-black rounded-[24px] font-bold">Sync Notion Library</button>
+                        <div className="p-6 dark-card space-y-2">
+                            <p className="text-[10px] font-black text-zinc-500 uppercase">Notion</p>
+                            <p className="text-sm text-[#9e9e9e]">Set <span className="text-[#8ab4f8] font-mono">NOTION_API_KEY</span> and <span className="text-[#8ab4f8] font-mono">OPENAI_API_KEY</span> in Vercel env vars.</p>
+                        </div>
+                        <button disabled={!notionAvailable} onClick={fetchExercisesFromNotion} className="w-full py-5 bg-[#8ab4f8] text-black rounded-[24px] font-bold disabled:opacity-50">Sync Notion Library</button>
+                        <div className="p-6 dark-card space-y-4">
+                            <p className="text-[10px] font-black text-zinc-500 uppercase">Your Profile</p>
+                            <div><label className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Bodyweight (kg)</label><input type="number" value={userProfile.bodyweight} onChange={e => setUserProfile(p => ({...p, bodyweight: e.target.value}))} className="w-full bg-[#131314] border border-[#3c4043] rounded-xl text-[#8ab4f8] font-bold text-sm p-3 outline-none" /></div>
+                            <div><label className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Experience</label><select value={userProfile.experienceLevel} onChange={e => setUserProfile(p => ({...p, experienceLevel: e.target.value}))} className="w-full bg-[#131314] border border-[#3c4043] rounded-xl text-[#8ab4f8] font-bold text-sm p-3 outline-none"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></div>
+                            <div><label className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Goal</label><select value={userProfile.goal} onChange={e => setUserProfile(p => ({...p, goal: e.target.value}))} className="w-full bg-[#131314] border border-[#3c4043] rounded-xl text-[#8ab4f8] font-bold text-sm p-3 outline-none"><option value="hypertrophy">Hypertrophy</option><option value="strength">Strength</option><option value="endurance">Endurance</option></select></div>
+                            <div><label className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Weekly Split</label><input type="text" value={userProfile.weeklySplit} onChange={e => setUserProfile(p => ({...p, weeklySplit: e.target.value}))} placeholder="e.g. Push Pull Legs" className="w-full bg-[#131314] border border-[#3c4043] rounded-xl text-[#8ab4f8] font-bold text-sm p-3 outline-none" /></div>
+                        </div>
                     </main>
                 </div>
             );
@@ -403,7 +459,7 @@
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={() => { setActiveRoutine(r); setView('planner'); }} className="p-3"><Icons.Settings /></button>
-                                    <button disabled={!r.exercises?.length} onClick={() => { setActiveRoutine(r); setCurrentExerciseIndex(0); setWorkoutLog({}); setWorkoutNotes({}); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
+                                    <button disabled={!r.exercises?.length} onClick={() => { setActiveRoutine(r); setCurrentExerciseIndex(0); setWorkoutLog({}); setWorkoutNotes({}); setAiFeedback(null); setAiFeedbackLoading(false); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
                                 </div>
                             </div>
                         ))}
@@ -540,13 +596,39 @@
             if (view === 'success') {
                 const motivation = CONSTANTS.MOTIVATIONS[Math.floor(Math.random() * CONSTANTS.MOTIVATIONS.length)];
                 return (
-                <div className="min-h-screen bg-[#131314] flex flex-col items-center justify-center p-10 space-y-12">
+                <div className="min-h-screen bg-[#131314] flex flex-col items-center justify-center p-10 space-y-8">
                     <div className="text-8xl animate-bounce">💪</div>
                     <h2 className="text-5xl font-black italic uppercase">Complete</h2>
                     <p className="text-xl italic text-center text-[#8ab4f8]">"{motivation}"</p>
+                    {aiFeedbackLoading && (
+                        <div className="flex items-center gap-3 text-[#9e9e9e] text-sm">
+                            <div className="w-4 h-4 border-2 border-[#9e9e9e] border-t-transparent rounded-full animate-spin"></div>
+                            Analyzing your workout...
+                        </div>
+                    )}
+                    {aiFeedback && !aiFeedbackLoading && (
+                        <button onClick={() => setView('feedback')} className="w-full py-5 bg-[#1e1f20] border border-[#8ab4f8]/40 text-[#8ab4f8] rounded-[24px] font-bold">View AI Feedback</button>
+                    )}
                     <button onClick={() => setView('home')} className="w-full py-6 bg-white text-black rounded-3xl font-black italic">Return Home</button>
                 </div>
             );
+            }
+
+            if (view === 'feedback') {
+                const lines = (aiFeedback || '').split('\n').filter(l => l.trim());
+                return (
+                    <div className="min-h-screen bg-[#131314]">
+                        <Header title="AI Feedback" sub="Coach Analysis" leftAction={<button onClick={() => setView('success')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} setView={setView} />
+                        <main className="p-6 space-y-3 pb-28">
+                            {lines.map((line, i) => (
+                                <p key={i} className="text-[#e3e3e3] text-sm leading-relaxed">{line}</p>
+                            ))}
+                        </main>
+                        <div className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c]">
+                            <button onClick={() => setView('home')} className="w-full py-5 bg-white text-black rounded-[24px] font-black italic">Return Home</button>
+                        </div>
+                    </div>
+                );
             }
 
             if (view === 'history') return (
