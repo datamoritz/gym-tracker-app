@@ -410,16 +410,22 @@
                             setTargetEndTime(null);
                             try {
                                 const ctx = audioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)();
-                                if (ctx.state === 'suspended') ctx.resume();
-                                const osc = ctx.createOscillator();
-                                const gain = ctx.createGain();
-                                osc.frequency.value = 880;
-                                osc.connect(gain);
-                                gain.connect(ctx.destination);
-                                gain.gain.setValueAtTime(0.4, ctx.currentTime);
-                                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
-                                osc.start(ctx.currentTime);
-                                osc.stop(ctx.currentTime + 0.8);
+                                const playBeep = () => {
+                                    const osc = ctx.createOscillator();
+                                    const gain = ctx.createGain();
+                                    osc.frequency.value = 880;
+                                    osc.connect(gain);
+                                    gain.connect(ctx.destination);
+                                    gain.gain.setValueAtTime(0.4, ctx.currentTime);
+                                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+                                    osc.start(ctx.currentTime);
+                                    osc.stop(ctx.currentTime + 0.8);
+                                };
+                                if (ctx.state === 'suspended') {
+                                    ctx.resume().then(playBeep).catch(() => {});
+                                } else {
+                                    playBeep();
+                                }
                             } catch (e) {}
                         }
                     }, 500);
@@ -615,14 +621,26 @@
             }
 
             if (view === 'feedback') {
-                const lines = (aiFeedback || '').split('\n').filter(l => l.trim());
+                const renderLine = (line, i) => {
+                    const isBullet = /^[\s]*[-•]\s/.test(line);
+                    const text = line.replace(/^[\s\-•]+/, '').trim();
+                    if (!text) return null;
+                    const html = text
+                        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.+?)\*/g, '<em>$1</em>');
+                    if (isBullet) return (
+                        <div key={i} className="flex gap-3 items-start">
+                            <span className="text-[#8ab4f8] flex-shrink-0 mt-0.5">●</span>
+                            <span className="text-[#e3e3e3] text-sm leading-relaxed" dangerouslySetInnerHTML={{__html: html}} />
+                        </div>
+                    );
+                    return <p key={i} className="text-[#9e9e9e] text-[10px] font-black uppercase tracking-widest pt-4 first:pt-0" dangerouslySetInnerHTML={{__html: html}} />;
+                };
                 return (
                     <div className="min-h-screen bg-[#131314]">
                         <Header title="AI Feedback" sub="Coach Analysis" leftAction={<button onClick={() => setView('success')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} setView={setView} />
-                        <main className="p-6 space-y-3 pb-28">
-                            {lines.map((line, i) => (
-                                <p key={i} className="text-[#e3e3e3] text-sm leading-relaxed">{line}</p>
-                            ))}
+                        <main className="p-6 space-y-2 pb-28">
+                            {(aiFeedback || '').split('\n').map((line, i) => renderLine(line, i)).filter(Boolean)}
                         </main>
                         <div className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c]">
                             <button onClick={() => setView('home')} className="w-full py-5 bg-white text-black rounded-[24px] font-black italic">Return Home</button>

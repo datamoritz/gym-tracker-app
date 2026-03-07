@@ -16,19 +16,20 @@ export default async function handler(req, res) {
   const prompt = `You are a strength training coach.
 
 Analyze the following workout and give concise feedback.
+This is ONE SESSION from a split routine — do NOT flag missing muscle groups that are covered by other days of their weekly split. Only evaluate what was trained today.
 
 Focus on:
-1. Exercise order
-2. Volume per muscle group
-3. Rep ranges
-4. Progressive overload suggestions
-5. Missing muscle groups
+1. Exercise order and sequencing
+2. Volume for today's muscle groups
+3. Rep ranges for their stated goal
+4. Progressive overload opportunities
+5. Execution quality based on weight and reps logged
 
-Return:
-- Overall rating (1–10)
-- What was best
-- Possible improvements
-- 1 concrete progression suggestion
+Return exactly these four sections with their labels:
+- Rating: X/10
+- Best:
+- Improvements:
+- Next session:
 
 Be concise, in bullets (max 120 words).
 
