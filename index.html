@@ -161,6 +161,7 @@
             const [syncStatus, setSyncStatus] = useState('idle');
             const [isLogging, setIsLogging] = useState(false);
             const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+            const [isSaving, setIsSaving] = useState(false);
 
             const timerRef = useRef(null);
 
@@ -240,43 +241,101 @@
                     });
                     const data = await resp.json();
                     const fetched = data.results.map(page => {
-                        try { return JSON.parse(page.properties.JSON.rich_text[0].plain_text); } catch { return null; }
+                        try {
+                            const r = JSON.parse(page.properties.JSON.rich_text[0].plain_text);
+                            return { ...r, notionPageId: page.id };
+                        } catch { return null; }
                     }).filter(Boolean);
-                    if (fetched.length) setRoutines(fetched);
+                    if (fetched.length) {
+                        setRoutines(prev => {
+                            const notionIds = new Set(fetched.map(r => r.id));
+                            const localOnly = prev.filter(r => !notionIds.has(r.id));
+                            return [...fetched, ...localOnly];
+                        });
+                    }
                 } catch (e) {}
             };
 
             const pushToNotionLog = async () => {
-                if (!notionAvailable) return;
                 setIsLogging(true);
                 const today = new Date().toISOString().split('T')[0];
-                for (const exId in workoutLog) {
-                    const exercise = activeRoutine.exercises.find(e => e.id.toString() === exId.toString());
-                    if (!exercise) continue;
-                    for (const set of workoutLog[exId]) {
-                        await fetch("/api/notion", {
+                if (notionAvailable) {
+                    for (const exId in workoutLog) {
+                        const exercise = activeRoutine.exercises.find(e => e.id.toString() === exId.toString());
+                        if (!exercise) continue;
+                        for (const set of workoutLog[exId]) {
+                            await fetch("/api/notion", {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    path: "pages",
+                                    body: {
+                                        parent: { database_id: logDbId },
+                                        properties: {
+                                            "Exercise": { title: [{ text: { content: exercise.name } }] },
+                                            "Date": { date: { start: today } },
+                                            "Weight": { number: parseFloat(set.w) || 0 },
+                                            "Reps": { number: parseInt(set.r) || 0 },
+                                            "Rest": { number: parseInt(exercise.defaultPause) || 0 }
+                                        }
+                                    }
+                                })
+                            });
+                        }
+                    }
+                }
+                setHistory(prev => [{ id: Date.now(), date: today, routineName: activeRoutine.name, summary: notionAvailable ? "Synced" : "Local" }, ...prev]);
+                setIsLogging(false);
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                setView('success');
+            };
+
+            const saveRoutineToNotion = async (routine) => {
+                if (!notionAvailable) return routine;
+                try {
+                    const { notionPageId, ...routineData } = routine;
+                    if (notionPageId) {
+                        await fetch('/api/notion', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                path: "pages",
+                                method: 'PATCH',
+                                path: `pages/${notionPageId}`,
+                                body: { properties: { "JSON": { rich_text: [{ text: { content: JSON.stringify(routineData) } }] } } }
+                            })
+                        });
+                        return routine;
+                    } else {
+                        const resp = await fetch('/api/notion', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                path: 'pages',
                                 body: {
-                                    parent: { database_id: logDbId },
+                                    parent: { database_id: routineDbId },
                                     properties: {
-                                        "Exercise": { title: [{ text: { content: exercise.name } }] },
-                                        "Date": { date: { start: today } },
-                                        "Weight": { number: parseFloat(set.w) || 0 },
-                                        "Reps": { number: parseInt(set.r) || 0 },
-                                        "Rest": { number: parseInt(exercise.defaultPause) || 0 }
+                                        "Name": { title: [{ text: { content: routine.name } }] },
+                                        "JSON": { rich_text: [{ text: { content: JSON.stringify(routineData) } }] }
                                     }
                                 }
                             })
                         });
+                        const data = await resp.json();
+                        return { ...routine, notionPageId: data.id };
                     }
-                }
-                setHistory(prev => [{ id: Date.now(), date: today, routineName: activeRoutine.name, summary: "Synced" }, ...prev]);
-                setIsLogging(false);
-                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-                setView('success');
+                } catch (e) { return routine; }
+            };
+
+            const saveRoutine = async () => {
+                setIsSaving(true);
+                let routineToSave = activeRoutine;
+                if (notionAvailable) routineToSave = await saveRoutineToNotion(activeRoutine);
+                setRoutines(prev => prev.find(r => r.id === routineToSave.id)
+                    ? prev.map(r => r.id === routineToSave.id ? routineToSave : r)
+                    : [...prev, routineToSave]
+                );
+                setIsSaving(false);
+                setView('home');
             };
 
             const startTimer = (seconds) => {
@@ -400,7 +459,7 @@
                             </div>
                         ))}
                     </main>
-                    <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c]"><button onClick={() => { setRoutines(prev => prev.find(r => r.id === activeRoutine.id) ? prev.map(r => r.id === activeRoutine.id ? activeRoutine : r) : [...prev, activeRoutine]); setView('home'); }} className="w-full py-5 bg-[#8ab4f8] text-black rounded-[24px] font-bold">Save Protocol</button></footer>
+                    <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c]"><button onClick={saveRoutine} disabled={isSaving} className="w-full py-5 bg-[#8ab4f8] text-black rounded-[24px] font-bold disabled:opacity-50">{isSaving ? 'Saving...' : 'Save Protocol'}</button></footer>
                 </div>
             );
 
@@ -441,16 +500,16 @@
                             <div className="flex flex-wrap gap-2">{logged.map((s, i) => <div key={i} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {i+1}: {s.w}KG × {s.r}</div>)}</div>
                         </main>
                         {timerActive && (
-                            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" style={{pointerEvents: 'auto'}}>
-                                <div className="p-8 bg-gradient-to-br from-[#ff6b35] to-[#f7931e] rounded-3xl shadow-2xl flex flex-col items-center gap-6 scale-110">
-                                    <div className="text-[16px] text-white uppercase tracking-[0.4em] font-black">RECOVERY</div>
-                                    <div className="text-[128px] font-black text-white leading-none timer-animate tabular-nums tracking-tighter">
+                            <div className="fixed bottom-[6.5rem] left-4 right-4 z-40 flex items-center gap-4 px-5 py-4 rounded-2xl shadow-2xl" style={{background: 'linear-gradient(135deg, #ff6b35, #f7931e)'}}>
+                                <div className="flex flex-col">
+                                    <span className="text-white/70 text-[9px] font-black uppercase tracking-widest">Recovery</span>
+                                    <span className="text-white font-black text-4xl leading-none tabular-nums timer-animate">
                                         {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
-                                    </div>
-                                    <div className="flex gap-4">
-                                        <button onClick={() => { setTimerActive(false); setTargetEndTime(null); }} className="py-3 px-8 bg-white text-[#f7931e] rounded-xl font-black text-lg hover:bg-gray-100">Skip</button>
-                                        <button onClick={() => { setTimeLeft(prev => Math.max(0, prev - 15)); }} className="py-3 px-8 bg-white/20 border-2 border-white text-white rounded-xl font-black text-lg">-15s</button>
-                                    </div>
+                                    </span>
+                                </div>
+                                <div className="flex gap-2 ml-auto">
+                                    <button onClick={() => { setTimeLeft(prev => Math.max(0, prev - 15)); }} className="py-2 px-3 bg-white/20 border border-white/30 text-white rounded-xl font-black text-sm">-15s</button>
+                                    <button onClick={() => { setTimerActive(false); setTargetEndTime(null); }} className="py-2 px-4 bg-white text-[#f7931e] rounded-xl font-black text-sm">Skip</button>
                                 </div>
                             </div>
                         )}

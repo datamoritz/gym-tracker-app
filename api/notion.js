@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     // the client may send whatever it wants, but the real secret lives in an
     // environment variable on the server. we ignore any notionKey provided by
     // the browser so that no sensitive information ever leaves the server.
-    const { path, body } = req.body || {};
+    const { path, body, method: clientMethod } = req.body || {};
     if (!path) {
       return res.status(400).json({ error: "Missing path" });
     }
@@ -31,8 +31,9 @@ export default async function handler(req, res) {
 
     const url = `https://api.notion.com/v1/${String(path).replace(/^\/+/, "")}`;
 
+    const httpMethod = ['GET', 'PATCH', 'DELETE'].includes(clientMethod) ? clientMethod : 'POST';
     const r = await fetch(url, {
-      method: "POST",
+      method: httpMethod,
       headers: {
         "Authorization": `Bearer ${notionKey}`,
         "Notion-Version": "2022-06-28",
