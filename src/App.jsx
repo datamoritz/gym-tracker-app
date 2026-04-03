@@ -110,9 +110,10 @@ function formatChartDate(value) {
 }
 
 function buildExerciseAnalytics(workouts) {
+  const chronologicalWorkouts = [...(workouts || [])].reverse();
   const grouped = new Map();
 
-  for (const workout of workouts || []) {
+  for (const workout of chronologicalWorkouts) {
     const exerciseName = typeof workout?.exerciseName === 'string' ? workout.exerciseName.trim() : '';
     if (!exerciseName) continue;
 
@@ -184,6 +185,7 @@ function buildExerciseAnalytics(workouts) {
 function AnalyticsChart({ points }) {
   if (!points.length) return null;
 
+  const scrollRef = useRef(null);
   const width = 840;
   const height = 300;
   const padding = { top: 18, right: 20, bottom: 58, left: 24 };
@@ -204,6 +206,12 @@ function AnalyticsChart({ points }) {
   const getY = value => padding.top + chartHeight - ((value - minValue) / (maxValue - minValue || 1)) * chartHeight;
   const buildLine = accessor => points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${getX(index)} ${getY(accessor(point))}`).join(' ');
   const gridValues = Array.from({ length: 4 }, (_, index) => Math.round((maxValue / 4) * (4 - index)));
+  const totalVolume = Math.round(points.reduce((sum, point) => sum + (point.weight * point.reps), 0));
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, [points]);
 
   return (
     <div className="analytics-panel p-4">
@@ -217,7 +225,7 @@ function AnalyticsChart({ points }) {
           <span className="flex items-center gap-2 text-[#b8f3e1]"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: repsColor }}></span>Reps</span>
         </div>
       </div>
-      <div className="overflow-x-auto no-scrollbar">
+      <div className="overflow-x-auto no-scrollbar" ref={scrollRef}>
         <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] w-full h-auto">
           <defs>
             <linearGradient id="weightGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -289,6 +297,16 @@ function AnalyticsChart({ points }) {
               {index + 1}
             </text>
           ))}
+
+          <g transform={`translate(${width - padding.right - 142}, ${padding.top + 6})`}>
+            <rect width="142" height="44" rx="16" fill="rgba(14, 17, 20, 0.82)" stroke="rgba(138, 180, 248, 0.18)" />
+            <text x="14" y="17" fill="#6f747b" fontSize="9" style={{ letterSpacing: '0.22em', textTransform: 'uppercase', fontWeight: 800 }}>
+              Total Volume
+            </text>
+            <text x="14" y="33" fill="#e3e3e3" fontSize="16" style={{ fontWeight: 800 }}>
+              {totalVolume}
+            </text>
+          </g>
         </svg>
       </div>
       <div className="flex items-center justify-between mt-3 text-[11px] text-[#6f747b]">
@@ -447,8 +465,7 @@ export default function App() {
       if (entries.length && !entries.some(entry => entry.exerciseName === selectedExercise)) {
         setSelectedExercise(entries[0].exerciseName);
       }
-      setNotice('Analytics feed synced.');
-      setNoticeTone('success');
+      setNotice(null);
     } catch (error) {
       setNotice(error.message || 'Could not load analytics data.');
       setNoticeTone('error');
