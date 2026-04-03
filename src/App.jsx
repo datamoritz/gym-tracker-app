@@ -23,6 +23,7 @@ const Icons = {
   Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>,
   ChevronLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>,
   History: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>,
+  Chart: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 14l4-4 3 3 5-6" /></svg>,
   Cloud: ({ active }) => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill={active ? '#10b981' : 'none'} stroke={active ? '#10b981' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.2-4-4.5A7 7 0 1 0 5 13c0 .3 0 .7.1 1a4.5 4.5 0 1 0 4.4 5h8z" /></svg>
 };
 
@@ -41,6 +42,7 @@ function Header({ title, sub, leftAction, rightAction, notionAvailable, setView 
       </div>
       {rightAction || (
         <div className="flex gap-2">
+          <button onClick={() => setView('analytics')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Chart /></button>
           <button onClick={() => setView('history')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.History /></button>
           <button onClick={() => setView('settings')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Settings /></button>
         </div>
@@ -100,6 +102,203 @@ async function readJson(response) {
   return payload;
 }
 
+function formatChartDate(value) {
+  if (!value) return '';
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function buildExerciseAnalytics(workouts) {
+  const grouped = new Map();
+
+  for (const workout of workouts || []) {
+    const exerciseName = typeof workout?.exerciseName === 'string' ? workout.exerciseName.trim() : '';
+    if (!exerciseName) continue;
+
+    const key = exerciseName.toLowerCase();
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        exerciseName,
+        points: [],
+        sessions: new Set(),
+        totalVolume: 0,
+        maxWeight: 0,
+        maxReps: 0
+      });
+    }
+
+    const entry = grouped.get(key);
+    const weight = Number(workout.weight) || 0;
+    const reps = Number(workout.reps) || 0;
+    const date = workout.date || null;
+
+    entry.points.push({
+      id: workout.id,
+      exerciseName,
+      x: entry.points.length + 1,
+      date,
+      weight,
+      reps,
+      notes: workout.notes || '',
+      sessionStart: !entry.points.length || entry.points[entry.points.length - 1].date !== date
+    });
+    if (date) entry.sessions.add(date);
+    entry.totalVolume += weight * reps;
+    entry.maxWeight = Math.max(entry.maxWeight, weight);
+    entry.maxReps = Math.max(entry.maxReps, reps);
+  }
+
+  return Array.from(grouped.values())
+    .map(entry => {
+      const latestPoint = entry.points[entry.points.length - 1] || null;
+      const previousPoint = entry.points[entry.points.length - 2] || null;
+      const sortedDates = Array.from(entry.sessions).sort();
+      let averageGapDays = null;
+
+      if (sortedDates.length > 1) {
+        let totalGap = 0;
+        for (let index = 1; index < sortedDates.length; index += 1) {
+          const current = new Date(`${sortedDates[index]}T12:00:00`);
+          const previous = new Date(`${sortedDates[index - 1]}T12:00:00`);
+          totalGap += Math.round((current - previous) / 86400000);
+        }
+        averageGapDays = Math.round(totalGap / (sortedDates.length - 1));
+      }
+
+      return {
+        exerciseName: entry.exerciseName,
+        points: entry.points,
+        sessionCount: entry.sessions.size,
+        totalVolume: Math.round(entry.totalVolume),
+        maxWeight: entry.maxWeight,
+        maxReps: entry.maxReps,
+        averageGapDays,
+        latestPoint,
+        previousPoint
+      };
+    })
+    .sort((left, right) => left.exerciseName.localeCompare(right.exerciseName));
+}
+
+function AnalyticsChart({ points }) {
+  if (!points.length) return null;
+
+  const width = 840;
+  const height = 300;
+  const padding = { top: 18, right: 20, bottom: 58, left: 24 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxWeight = Math.max(...points.map(point => point.weight), 1);
+  const maxReps = Math.max(...points.map(point => point.reps), 1);
+  const maxValue = Math.max(maxWeight, maxReps);
+  const minValue = 0;
+  const weightColor = '#8ab4f8';
+  const repsColor = '#7ef0c7';
+
+  const getX = index => (
+    points.length === 1
+      ? padding.left + chartWidth / 2
+      : padding.left + (index / (points.length - 1)) * chartWidth
+  );
+  const getY = value => padding.top + chartHeight - ((value - minValue) / (maxValue - minValue || 1)) * chartHeight;
+  const buildLine = accessor => points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${getX(index)} ${getY(accessor(point))}`).join(' ');
+  const gridValues = Array.from({ length: 4 }, (_, index) => Math.round((maxValue / 4) * (4 - index)));
+
+  return (
+    <div className="analytics-panel p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Trajectory</p>
+          <p className="text-sm text-[#9aa0a6]">Each point is one logged set.</p>
+        </div>
+        <div className="flex gap-3 text-[11px]">
+          <span className="flex items-center gap-2 text-[#c9d7f8]"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: weightColor }}></span>Weight</span>
+          <span className="flex items-center gap-2 text-[#b8f3e1]"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: repsColor }}></span>Reps</span>
+        </div>
+      </div>
+      <div className="overflow-x-auto no-scrollbar">
+        <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] w-full h-auto">
+          <defs>
+            <linearGradient id="weightGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#8ab4f8" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="#8ab4f8" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="repsGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#7ef0c7" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#7ef0c7" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {gridValues.map(value => (
+            <g key={value}>
+              <line
+                x1={padding.left}
+                y1={getY(value)}
+                x2={width - padding.right}
+                y2={getY(value)}
+                stroke="rgba(255,255,255,0.08)"
+                strokeDasharray="4 8"
+              />
+              <text x={padding.left - 2} y={getY(value) - 6} fill="#6f747b" fontSize="10" textAnchor="start">
+                {value}
+              </text>
+            </g>
+          ))}
+
+          {points.map((point, index) => (
+            point.sessionStart ? (
+              <g key={`${point.id}-session`}>
+                <line
+                  x1={getX(index)}
+                  y1={padding.top}
+                  x2={getX(index)}
+                  y2={height - padding.bottom}
+                  stroke="rgba(255,255,255,0.08)"
+                />
+                <text
+                  x={getX(index)}
+                  y={height - 18}
+                  fill="#6f747b"
+                  fontSize="10"
+                  textAnchor={index === 0 ? 'start' : 'middle'}
+                >
+                  {formatChartDate(point.date)}
+                </text>
+              </g>
+            ) : null
+          ))}
+
+          <path d={`${buildLine(point => point.weight)} L ${getX(points.length - 1)} ${height - padding.bottom} L ${getX(0)} ${height - padding.bottom} Z`} fill="url(#weightGradient)" />
+          <path d={`${buildLine(point => point.reps)} L ${getX(points.length - 1)} ${height - padding.bottom} L ${getX(0)} ${height - padding.bottom} Z`} fill="url(#repsGradient)" />
+          <path d={buildLine(point => point.weight)} fill="none" stroke={weightColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={buildLine(point => point.reps)} fill="none" stroke={repsColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+
+          {points.map((point, index) => (
+            <g key={point.id}>
+              <circle cx={getX(index)} cy={getY(point.weight)} r="4.5" fill={weightColor} />
+              <circle cx={getX(index)} cy={getY(point.weight)} r="12" fill="transparent">
+                <title>{`${point.exerciseName || ''}${point.exerciseName ? '\n' : ''}${formatChartDate(point.date)}\nWeight: ${point.weight} kg\nReps: ${point.reps}${point.notes ? `\nNotes: ${point.notes}` : ''}`}</title>
+              </circle>
+              <circle cx={getX(index)} cy={getY(point.reps)} r="4.5" fill={repsColor} />
+            </g>
+          ))}
+
+          {points.map((point, index) => (
+            <text key={`${point.id}-index`} x={getX(index)} y={height - 34} fill="#9aa0a6" fontSize="10" textAnchor="middle">
+              {index + 1}
+            </text>
+          ))}
+        </svg>
+      </div>
+      <div className="flex items-center justify-between mt-3 text-[11px] text-[#6f747b]">
+        <span>Set index across all logged sessions</span>
+        <span>Dates mark session starts</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState('home');
   const [routines, setRoutines] = useState(() => JSON.parse(localStorage.getItem('gym_routines') || '[]'));
@@ -125,6 +324,9 @@ export default function App() {
   const [userProfile, setUserProfile] = useState(() => JSON.parse(localStorage.getItem('gym_user_profile') || '{"bodyweight":75,"experienceLevel":"intermediate","goal":"hypertrophy","weeklySplit":"Push Pull Legs"}'));
   const [notice, setNotice] = useState(null);
   const [noticeTone, setNoticeTone] = useState('error');
+  const [analyticsWorkouts, setAnalyticsWorkouts] = useState([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [selectedExercise, setSelectedExercise] = useState('');
   const timerRef = useRef(null);
   const audioCtxRef = useRef(null);
 
@@ -145,6 +347,11 @@ export default function App() {
   useEffect(() => { if (notionAvailable) { fetchExercisesFromNotion(); fetchRoutinesFromNotion(); } }, [notionAvailable]);
   useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem('gym_user_profile', JSON.stringify(userProfile)); }, [userProfile]);
+  useEffect(() => {
+    if (view === 'analytics' && notionAvailable && !analyticsWorkouts.length && !analyticsLoading) {
+      fetchWorkoutAnalytics();
+    }
+  }, [view, notionAvailable]);
 
   useEffect(() => {
     if (view === 'active' && activeRoutine && activeRoutine.exercises) {
@@ -226,6 +433,28 @@ export default function App() {
       setNoticeTone('error');
     }
     setAiFeedbackLoading(false);
+  }
+
+  async function fetchWorkoutAnalytics() {
+    if (!notionAvailable) return;
+    setAnalyticsLoading(true);
+    try {
+      const response = await fetch('/api/workouts?limit=200');
+      const data = await readJson(response);
+      const workouts = data.workouts || [];
+      setAnalyticsWorkouts(workouts);
+      const entries = buildExerciseAnalytics(workouts);
+      if (entries.length && !entries.some(entry => entry.exerciseName === selectedExercise)) {
+        setSelectedExercise(entries[0].exerciseName);
+      }
+      setNotice('Analytics feed synced.');
+      setNoticeTone('success');
+    } catch (error) {
+      setNotice(error.message || 'Could not load analytics data.');
+      setNoticeTone('error');
+    } finally {
+      setAnalyticsLoading(false);
+    }
   }
 
   async function pushToNotionLog() {
@@ -575,6 +804,110 @@ export default function App() {
         <div className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c]">
           <button onClick={() => setView('home')} className="w-full py-5 bg-white text-black rounded-[24px] font-black italic">Return Home</button>
         </div>
+      </div>
+    );
+  }
+
+  if (view === 'analytics') {
+    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts);
+    const activeEntry = exerciseEntries.find(entry => entry.exerciseName === selectedExercise) || exerciseEntries[0] || null;
+    const latestPoint = activeEntry?.latestPoint || null;
+    const previousPoint = activeEntry?.previousPoint || null;
+    const weightDelta = latestPoint && previousPoint ? (latestPoint.weight - previousPoint.weight) : null;
+    const repsDelta = latestPoint && previousPoint ? (latestPoint.reps - previousPoint.reps) : null;
+
+    return (
+      <div className="min-h-screen bg-[#131314]">
+        <Header title="Analytics" sub="Signal Layer" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={<button onClick={fetchWorkoutAnalytics} disabled={!notionAvailable || analyticsLoading} className="px-4 py-3 bg-[#28292c] text-[#9e9e9e] rounded-full text-xs font-black uppercase tracking-[0.2em] disabled:opacity-50">{analyticsLoading ? 'Syncing' : 'Refresh'}</button>} notionAvailable={notionAvailable} setView={setView} />
+        {notice && <Notice message={notice} tone={noticeTone} />}
+        <main className="p-6 space-y-5 pb-20">
+          {!notionAvailable && (
+            <div className="analytics-panel p-6 space-y-2">
+              <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Notion Required</p>
+              <p className="text-sm text-[#9aa0a6]">Analytics reads from your synced workout log database, so this section becomes active once Notion is configured on Vercel.</p>
+            </div>
+          )}
+
+          {notionAvailable && analyticsLoading && !analyticsWorkouts.length && (
+            <div className="analytics-panel p-8 text-center space-y-3">
+              <div className="w-8 h-8 mx-auto border-2 border-[#8ab4f8]/40 border-t-[#8ab4f8] rounded-full animate-spin"></div>
+              <p className="text-sm text-[#9aa0a6]">Collecting your latest workout sets...</p>
+            </div>
+          )}
+
+          {notionAvailable && !analyticsLoading && !exerciseEntries.length && (
+            <div className="analytics-panel p-8 text-center space-y-3">
+              <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">No Signals Yet</p>
+              <p className="text-sm text-[#9aa0a6]">Once your workout log database has entries, this view will turn them into per-exercise progress charts.</p>
+            </div>
+          )}
+
+          {activeEntry && (
+            <>
+              <div className="analytics-panel p-4">
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Exercise Stream</p>
+                    <h2 className="text-2xl font-black italic">{activeEntry.exerciseName}</h2>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Tracked Sets</p>
+                    <p className="text-xl font-black text-[#8ab4f8]">{activeEntry.points.length}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  {exerciseEntries.map(entry => (
+                    <button
+                      key={entry.exerciseName}
+                      onClick={() => setSelectedExercise(entry.exerciseName)}
+                      className={`shrink-0 px-4 py-2 rounded-full border text-sm transition-all ${entry.exerciseName === activeEntry.exerciseName ? 'bg-[#8ab4f8] text-black border-[#8ab4f8] shadow-[0_0_30px_rgba(138,180,248,0.22)]' : 'bg-[#17181a] text-[#9aa0a6] border-[#2a2c31]'}`}
+                    >
+                      {entry.exerciseName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <AnalyticsChart points={activeEntry.points} />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="analytics-panel p-4">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Latest Set</p>
+                  <p className="mt-3 text-2xl font-black text-white">{latestPoint ? `${latestPoint.weight}kg` : '--'}</p>
+                  <p className="text-sm text-[#9aa0a6]">{latestPoint ? `${latestPoint.reps} reps on ${formatChartDate(latestPoint.date)}` : 'No data yet'}</p>
+                  {weightDelta !== null && repsDelta !== null && (
+                    <p className={`mt-3 text-xs font-bold ${weightDelta > 0 || repsDelta > 0 ? 'text-[#7ef0c7]' : 'text-[#9aa0a6]'}`}>
+                      {`${weightDelta >= 0 ? '+' : ''}${weightDelta}kg / ${repsDelta >= 0 ? '+' : ''}${repsDelta} reps vs previous set`}
+                    </p>
+                  )}
+                </div>
+                <div className="analytics-panel p-4">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Best Envelope</p>
+                  <p className="mt-3 text-2xl font-black text-white">{activeEntry.maxWeight}kg</p>
+                  <p className="text-sm text-[#9aa0a6]">Peak load, with a rep ceiling of {activeEntry.maxReps}</p>
+                  <p className="mt-3 text-xs font-bold text-[#8ab4f8]">{activeEntry.sessionCount} logged sessions</p>
+                </div>
+                <div className="analytics-panel p-4">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Volume Flow</p>
+                  <p className="mt-3 text-2xl font-black text-white">{activeEntry.totalVolume}</p>
+                  <p className="text-sm text-[#9aa0a6]">Total kg-reps accumulated for this exercise</p>
+                </div>
+                <div className="analytics-panel p-4">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Cadence</p>
+                  <p className="mt-3 text-2xl font-black text-white">{activeEntry.averageGapDays ?? '--'}</p>
+                  <p className="text-sm text-[#9aa0a6]">{activeEntry.averageGapDays !== null ? 'Average days between sessions' : 'Need more than one session to estimate gaps'}</p>
+                </div>
+              </div>
+
+              {latestPoint?.notes && (
+                <div className="analytics-panel p-4">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Latest Note</p>
+                  <p className="mt-3 text-sm leading-relaxed text-[#d5dae0]">{latestPoint.notes}</p>
+                </div>
+              )}
+            </>
+          )}
+        </main>
       </div>
     );
   }

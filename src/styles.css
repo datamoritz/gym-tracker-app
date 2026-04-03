@@ -1,7 +1,10 @@
 body {
   -webkit-tap-highlight-color: transparent;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: #131314;
+  background:
+    radial-gradient(circle at top, rgba(138, 180, 248, 0.12), transparent 28%),
+    radial-gradient(circle at 80% 20%, rgba(126, 240, 199, 0.08), transparent 24%),
+    #131314;
   color: #e3e3e3;
   overflow-x: hidden;
 }
@@ -54,6 +57,17 @@ input::-webkit-inner-spin-button {
   background: #1e1f20;
   border: 1px solid #28292c;
   border-radius: 24px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.analytics-panel {
+  background:
+    linear-gradient(180deg, rgba(28, 30, 34, 0.96), rgba(18, 19, 22, 0.96));
+  border: 1px solid rgba(138, 180, 248, 0.12);
+  border-radius: 28px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 18px 60px rgba(0, 0, 0, 0.28);
 }
 
 .planner-input {

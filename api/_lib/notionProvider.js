@@ -98,6 +98,50 @@ async function listRoutines() {
   return (data?.results || []).map(mapRoutinePage).filter(Boolean);
 }
 
+function mapWorkoutPage(page) {
+  const properties = page.properties || {};
+
+  return {
+    id: page.id,
+    exerciseName: properties.Exercise?.title?.[0]?.plain_text || 'Untitled Exercise',
+    date: properties.Date?.date?.start || null,
+    weight: parseNumber(properties.Weight?.number, 0),
+    reps: parseInteger(properties.Reps?.number, 0),
+    restSeconds: parseInteger(properties.Rest?.number, 0),
+    notes: properties.Notes?.rich_text?.map(item => item.plain_text).join('').trim() || ''
+  };
+}
+
+async function listWorkoutEntries({ limit = 50, startDate = null, endDate = null } = {}) {
+  const logDbId = requireEnv('LOG_DB_ID');
+  const filters = [];
+
+  if (startDate) {
+    filters.push({
+      property: 'Date',
+      date: { on_or_after: startDate }
+    });
+  }
+
+  if (endDate) {
+    filters.push({
+      property: 'Date',
+      date: { on_or_before: endDate }
+    });
+  }
+
+  const data = await notionRequest(`databases/${logDbId}/query`, {
+    body: {
+      page_size: limit,
+      sorts: [{ property: 'Date', direction: 'descending' }],
+      ...(filters.length === 1 ? { filter: filters[0] } : {}),
+      ...(filters.length > 1 ? { filter: { and: filters } } : {})
+    }
+  });
+
+  return (data?.results || []).map(mapWorkoutPage);
+}
+
 async function saveRoutine(routineInput) {
   const routineDbId = requireEnv('ROUTINE_DB_ID');
   const routine = normalizeRoutine(routineInput);
@@ -161,6 +205,7 @@ async function logWorkout({ routine, workoutLog, date }) {
 module.exports = {
   listExercises,
   listRoutines,
+  listWorkoutEntries,
   saveRoutine,
   logWorkout
 };

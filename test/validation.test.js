@@ -6,8 +6,10 @@ const {
   parseInteger,
   normalizeRoutine,
   normalizeWorkoutLog,
+  normalizeWorkoutQuery,
   assertValidRoutineInput,
-  assertValidWorkoutInput
+  assertValidWorkoutInput,
+  assertValidWorkoutQuery
 } = require('../api/_lib/validation');
 
 test('parseNumber falls back for invalid values', () => {
@@ -58,4 +60,34 @@ test('assertValidWorkoutInput validates date and normalizes payload', () => {
   assert.equal(payload.date, '2026-04-02');
   assert.equal(payload.routine.name, 'Push');
   assert.deepEqual(payload.workoutLog.bench, [{ w: 90, r: 5, note: '' }]);
+});
+
+test('normalizeWorkoutQuery applies defaults and bounds', () => {
+  assert.deepEqual(normalizeWorkoutQuery({}), {
+    limit: 50,
+    startDate: null,
+    endDate: null
+  });
+
+  assert.deepEqual(normalizeWorkoutQuery({ limit: '999' }), {
+    limit: 200,
+    startDate: null,
+    endDate: null
+  });
+});
+
+test('assertValidWorkoutQuery validates optional date filters', () => {
+  const query = assertValidWorkoutQuery({
+    limit: '25',
+    startDate: '2026-03-01',
+    endDate: '2026-03-31'
+  });
+
+  assert.deepEqual(query, {
+    limit: 25,
+    startDate: '2026-03-01',
+    endDate: '2026-03-31'
+  });
+
+  assert.throws(() => assertValidWorkoutQuery({ startDate: '03/01/2026' }), /startDate must use YYYY-MM-DD/);
 });

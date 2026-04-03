@@ -79,11 +79,45 @@ function assertValidWorkoutInput(payload) {
   };
 }
 
+function normalizeWorkoutQuery(query) {
+  const rawLimit = Array.isArray(query?.limit) ? query.limit[0] : query?.limit;
+  const limit = Math.min(Math.max(parseInteger(rawLimit, 50), 1), 200);
+
+  const rawStartDate = Array.isArray(query?.startDate) ? query.startDate[0] : query?.startDate;
+  const rawEndDate = Array.isArray(query?.endDate) ? query.endDate[0] : query?.endDate;
+
+  const startDate = typeof rawStartDate === 'string' && rawStartDate.trim() ? rawStartDate.trim() : null;
+  const endDate = typeof rawEndDate === 'string' && rawEndDate.trim() ? rawEndDate.trim() : null;
+
+  return { limit, startDate, endDate };
+}
+
+function assertValidWorkoutQuery(query) {
+  const normalized = normalizeWorkoutQuery(query);
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (normalized.startDate && !datePattern.test(normalized.startDate)) {
+    const error = new Error('startDate must use YYYY-MM-DD');
+    error.status = 400;
+    throw error;
+  }
+
+  if (normalized.endDate && !datePattern.test(normalized.endDate)) {
+    const error = new Error('endDate must use YYYY-MM-DD');
+    error.status = 400;
+    throw error;
+  }
+
+  return normalized;
+}
+
 module.exports = {
   parseNumber,
   parseInteger,
   normalizeRoutine,
   normalizeWorkoutLog,
+  normalizeWorkoutQuery,
   assertValidRoutineInput,
-  assertValidWorkoutInput
+  assertValidWorkoutInput,
+  assertValidWorkoutQuery
 };
