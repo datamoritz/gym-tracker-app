@@ -1,0 +1,80 @@
+body {
+  -webkit-tap-highlight-color: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #131314;
+  color: #e3e3e3;
+  overflow-x: hidden;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.input-control-btn {
+  background: #28292c;
+  border: 1px solid #3c4043;
+  border-radius: 14px;
+  width: 100%;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #e3e3e3;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-control-btn:active {
+  background: #3c4043;
+  transform: scale(0.92);
+}
+
+.glass-header {
+  background: rgba(19, 19, 20, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #28292c;
+}
+
+.dark-card {
+  background: #1e1f20;
+  border: 1px solid #28292c;
+  border-radius: 24px;
+}
+
+.planner-input {
+  background: #131314;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  color: #8ab4f8;
+  font-weight: 800;
+  text-align: center;
+  font-size: 14px;
+  padding: 6px 0;
+  width: 100%;
+  outline: none;
+}
+
+@keyframes big-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.timer-animate {
+  animation: big-pulse 2s infinite ease-in-out;
+}

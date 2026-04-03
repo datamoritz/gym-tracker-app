@@ -1,7 +1,7 @@
 # Gym Tracker App
 
-This is a small single-page React application that stores workout routines locally
-and synchronises exercise, routine, and workout data with Notion through
+This is a small React application built with Vite that stores workout routines
+locally and synchronises exercise, routine, and workout data with Notion through
 server-side Vercel API routes. It is deployed to Vercel via the GitHub integration.
 
 ## Configuration
@@ -22,8 +22,8 @@ Notion integration is available and adjust the UI accordingly.
 
 ## Development
 
-The frontend lives in `index.html` and uses unpkg-hosted React, Babel, and
-Tailwind. App-facing server endpoints live in:
+The frontend now lives in `src/` and is served by Vite. App-facing server
+endpoints live in:
 
 * `api/config.js`
 * `api/exercises.js`
@@ -32,6 +32,14 @@ Tailwind. App-facing server endpoints live in:
 * `api/feedback.js`
 
 Shared Notion and validation helpers live in `api/_lib/`.
+
+## Frontend Commands
+
+```bash
+npm install
+npm run dev
+npm run build
+```
 
 ## Tooling
 
