@@ -1,0 +1,8 @@
+{
+  "name": "gym-tracker-app",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "check": "node --test"
+  }
+}

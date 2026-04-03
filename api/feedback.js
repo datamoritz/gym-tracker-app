@@ -9,8 +9,11 @@ export default async function handler(req, res) {
   }
 
   const { workout, profile } = req.body || {};
-  if (!workout) {
+  if (!workout || typeof workout !== 'object') {
     return res.status(400).json({ error: 'Missing workout data' });
+  }
+  if (!profile || typeof profile !== 'object') {
+    return res.status(400).json({ error: 'Missing profile data' });
   }
 
   const prompt = `You are a strength training coach.
@@ -57,7 +60,17 @@ ${JSON.stringify(profile, null, 2)}`;
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: data?.error?.message || 'OpenAI request failed'
+      });
+    }
+
     const feedback = data.choices?.[0]?.message?.content || '';
+    if (!feedback) {
+      return res.status(502).json({ error: 'OpenAI returned an empty feedback response' });
+    }
+
     res.status(200).json({ feedback });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
