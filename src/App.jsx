@@ -206,7 +206,6 @@ function AnalyticsChart({ points }) {
   const getY = value => padding.top + chartHeight - ((value - minValue) / (maxValue - minValue || 1)) * chartHeight;
   const buildLine = accessor => points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${getX(index)} ${getY(accessor(point))}`).join(' ');
   const gridValues = Array.from({ length: 4 }, (_, index) => Math.round((maxValue / 4) * (4 - index)));
-  const totalVolume = Math.round(points.reduce((sum, point) => sum + (point.weight * point.reps), 0));
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -298,15 +297,6 @@ function AnalyticsChart({ points }) {
             </text>
           ))}
 
-          <g transform={`translate(${width - padding.right - 142}, ${padding.top + 6})`}>
-            <rect width="142" height="44" rx="16" fill="rgba(14, 17, 20, 0.82)" stroke="rgba(138, 180, 248, 0.18)" />
-            <text x="14" y="17" fill="#6f747b" fontSize="9" style={{ letterSpacing: '0.22em', textTransform: 'uppercase', fontWeight: 800 }}>
-              Total Volume
-            </text>
-            <text x="14" y="33" fill="#e3e3e3" fontSize="16" style={{ fontWeight: 800 }}>
-              {totalVolume}
-            </text>
-          </g>
         </svg>
       </div>
       <div className="flex items-center justify-between mt-3 text-[11px] text-[#6f747b]">
@@ -397,8 +387,6 @@ export default function App() {
       setNotionExercises(fetched);
       localStorage.setItem('notion_exercises_cache', JSON.stringify(fetched));
       setSyncStatus('success');
-      setNotice('Exercise library synced.');
-      setNoticeTone('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
     } catch (error) {
       setSyncStatus('error');
