@@ -182,13 +182,40 @@ function buildExerciseAnalytics(workouts) {
     .sort((left, right) => left.exerciseName.localeCompare(right.exerciseName));
 }
 
-function AnalyticsChart({ points }) {
+function mergeLiveExercisePoints(points, loggedSets, exerciseName) {
+  const normalizedName = typeof exerciseName === 'string' ? exerciseName.trim() : '';
+  if (!loggedSets?.length || !normalizedName) return points;
+
+  const today = new Date().toISOString().split('T')[0];
+  const nextPoints = [...points];
+  const lastDate = nextPoints[nextPoints.length - 1]?.date || null;
+
+  loggedSets.forEach((set, index) => {
+    nextPoints.push({
+      id: `live-${normalizedName}-${index}`,
+      exerciseName: normalizedName,
+      x: nextPoints.length + 1,
+      date: today,
+      weight: Number(set.w) || 0,
+      reps: Number(set.r) || 0,
+      notes: set.note || '',
+      sessionStart: index === 0 ? lastDate !== today : false,
+      live: true
+    });
+  });
+
+  return nextPoints;
+}
+
+function AnalyticsChart({ points, compact = false, subtitle = 'Each point is one logged set.' }) {
   if (!points.length) return null;
 
   const scrollRef = useRef(null);
   const width = 840;
-  const height = 300;
-  const padding = { top: 18, right: 20, bottom: 58, left: 24 };
+  const height = compact ? 250 : 300;
+  const padding = compact
+    ? { top: 18, right: 18, bottom: 52, left: 24 }
+    : { top: 18, right: 20, bottom: 58, left: 24 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const maxWeight = Math.max(...points.map(point => point.weight), 1);
@@ -217,7 +244,7 @@ function AnalyticsChart({ points }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Trajectory</p>
-          <p className="text-sm text-[#9aa0a6]">Each point is one logged set.</p>
+          <p className="text-sm text-[#9aa0a6]">{subtitle}</p>
         </div>
         <div className="flex gap-3 text-[11px]">
           <span className="flex items-center gap-2 text-[#c9d7f8]"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: weightColor }}></span>Weight</span>
@@ -299,10 +326,12 @@ function AnalyticsChart({ points }) {
 
         </svg>
       </div>
-      <div className="flex items-center justify-between mt-3 text-[11px] text-[#6f747b]">
-        <span>Set index across all logged sessions</span>
-        <span>Dates mark session starts</span>
-      </div>
+      {!compact && (
+        <div className="flex items-center justify-between mt-3 text-[11px] text-[#6f747b]">
+          <span>Set index across all logged sessions</span>
+          <span>Dates mark session starts</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -356,10 +385,10 @@ export default function App() {
   useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem('gym_user_profile', JSON.stringify(userProfile)); }, [userProfile]);
   useEffect(() => {
-    if (view === 'analytics' && notionAvailable && !analyticsWorkouts.length && !analyticsLoading) {
+    if ((view === 'analytics' || view === 'active') && notionAvailable && !analyticsWorkouts.length && !analyticsLoading) {
       fetchWorkoutAnalytics();
     }
-  }, [view, notionAvailable]);
+  }, [view, notionAvailable, analyticsWorkouts.length, analyticsLoading]);
 
   useEffect(() => {
     if (view === 'active' && activeRoutine && activeRoutine.exercises) {
@@ -699,6 +728,9 @@ export default function App() {
   if (view === 'active') {
     const exercise = activeRoutine.exercises[currentExerciseIndex];
     const logged = workoutLog[exercise.id] || [];
+    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts);
+    const activeEntry = exerciseEntries.find(entry => entry.exerciseName.toLowerCase() === exercise.name.toLowerCase()) || null;
+    const playModePoints = mergeLiveExercisePoints(activeEntry?.points || [], logged, exercise.name);
 
     return (
       <div className="min-h-screen bg-[#131314]">
@@ -732,6 +764,19 @@ export default function App() {
               </div>
             </div>
           </div>
+          {notionAvailable && analyticsLoading && !playModePoints.length && (
+            <div className="analytics-panel p-5 flex items-center gap-3">
+              <div className="w-4 h-4 border-2 border-[#8ab4f8]/40 border-t-[#8ab4f8] rounded-full animate-spin"></div>
+              <p className="text-sm text-[#9aa0a6]">Loading exercise trend...</p>
+            </div>
+          )}
+          {notionAvailable && playModePoints.length > 0 && (
+            <AnalyticsChart
+              points={playModePoints}
+              compact
+              subtitle={logged.length ? 'Live session sets are appended on the right.' : 'Weight and reps across prior sessions.'}
+            />
+          )}
           <button onClick={() => { const nextWorkoutLog = { ...workoutLog }; if (!nextWorkoutLog[exercise.id]) nextWorkoutLog[exercise.id] = []; nextWorkoutLog[exercise.id].push({ w: parseFloat(inputWeight) || 0, r: inputReps, note: currentNote }); setWorkoutLog(nextWorkoutLog); setCurrentNote(''); startTimer(exercise.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length + 1} / {exercise.targetSets}</button>
           <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w}KG × {set.r}</div>)}</div>
           <div className="space-y-1">
