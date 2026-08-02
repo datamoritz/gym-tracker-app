@@ -211,6 +211,7 @@ function AnalyticsChart({ points, compact = false, subtitle = 'Each point is one
   if (!points.length) return null;
 
   const scrollRef = useRef(null);
+  const latestPoint = points[points.length - 1];
   const width = 840;
   const height = compact ? 250 : 300;
   const padding = compact
@@ -241,14 +242,18 @@ function AnalyticsChart({ points, compact = false, subtitle = 'Each point is one
 
   return (
     <div className="analytics-panel p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Trajectory</p>
           <p className="text-sm text-[#9aa0a6]">{subtitle}</p>
         </div>
-        <div className="flex gap-3 text-[11px]">
-          <span className="flex items-center gap-2 text-[#c9d7f8]"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: weightColor }}></span>Weight</span>
-          <span className="flex items-center gap-2 text-[#b8f3e1]"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: repsColor }}></span>Reps</span>
+        <div className="shrink-0 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-right">
+          <p className="mb-1 text-[9px] font-black uppercase tracking-[0.18em] text-[#6f747b]">Last used</p>
+          <div className="flex items-center justify-end gap-2 text-xs font-bold tabular-nums">
+            <span className="flex items-center gap-1.5 text-[#c9d7f8]"><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: weightColor }}></span>{latestPoint.weight} kg</span>
+            <span className="text-[#50545a]">×</span>
+            <span className="flex items-center gap-1.5 text-[#b8f3e1]"><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: repsColor }}></span>{latestPoint.reps} reps</span>
+          </div>
         </div>
       </div>
       <div className="overflow-x-auto no-scrollbar" ref={scrollRef}>
