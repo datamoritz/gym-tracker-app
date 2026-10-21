@@ -20,6 +20,7 @@ function normalizeRoutine(routine) {
           defaultPause: parseInteger(exercise?.defaultPause, 90),
           targetSets: parseInteger(exercise?.targetSets, 3),
           suggestedWeight: parseNumber(exercise?.suggestedWeight, 0),
+          weightUnit: exercise?.weightUnit === 'lbs' ? 'lbs' : 'kg',
           targetReps: parseInteger(exercise?.targetReps, 10)
         }))
       : []
@@ -34,6 +35,7 @@ function normalizeWorkoutLog(workoutLog) {
         ? sets.map(set => ({
             w: parseNumber(set?.w, 0),
             r: parseInteger(set?.r, 0),
+            ...(set?.weightUnit === 'kg' || set?.weightUnit === 'lbs' ? { weightUnit: set.weightUnit } : {}),
             note: typeof set?.note === 'string' ? set.note.trim() : ''
           }))
         : []

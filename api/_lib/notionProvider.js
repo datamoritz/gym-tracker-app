@@ -60,12 +60,13 @@ function mapExercisePage(page) {
     tag: properties.Routine?.select?.name || '',
     sets: parseInteger(properties.Sets?.rich_text?.[0]?.plain_text, 3),
     pause: parseInteger(properties.Pause?.rich_text?.[0]?.plain_text, 90),
-    weight: parseNumber(weightText.match(/[\d.]+/)?.[0], 0)
+    weight: parseNumber(weightText.match(/[\d.]+/)?.[0], 0),
+    weightUnit: /\b(lbs?|pounds?)\b/i.test(weightText) ? 'lbs' : 'kg'
   };
 }
 
 function mapRoutinePage(page) {
-  const rawJson = page?.properties?.JSON?.rich_text?.[0]?.plain_text;
+  const rawJson = page?.properties?.JSON?.rich_text?.map(item => item.plain_text).join('');
   if (!rawJson) return null;
 
   try {
@@ -146,13 +147,18 @@ async function saveRoutine(routineInput) {
   const routineDbId = requireEnv('ROUTINE_DB_ID');
   const routine = normalizeRoutine(routineInput);
   const { notionPageId, ...routineData } = routine;
+  // Notion limits each rich-text item to 2,000 characters.
+  const json = JSON.stringify(routineData);
+  const richText = Array.from({ length: Math.ceil(json.length / 2000) }, (_, index) => ({
+    text: { content: json.slice(index * 2000, (index + 1) * 2000) }
+  }));
 
   if (notionPageId) {
     await notionRequest(`pages/${notionPageId}`, {
       method: 'PATCH',
       body: {
         properties: {
-          JSON: { rich_text: [{ text: { content: JSON.stringify(routineData) } }] }
+          JSON: { rich_text: richText }
         }
       }
     });
@@ -165,7 +171,7 @@ async function saveRoutine(routineInput) {
       parent: { database_id: routineDbId },
       properties: {
         Name: { title: [{ text: { content: routine.name } }] },
-        JSON: { rich_text: [{ text: { content: JSON.stringify(routineData) } }] }
+        JSON: { rich_text: richText }
       }
     }
   });
@@ -183,16 +189,20 @@ async function logWorkout({ routine, workoutLog, date }) {
     if (!exercise) continue;
 
     for (const set of sets) {
+      const unit = set.weightUnit || exercise.weightUnit;
+      // Keep the existing numeric Weight column in kg for comparable history.
+      const weightKg = unit === 'lbs' ? set.w * 0.45359237 : set.w;
+      const note = [unit === 'lbs' ? `Entered load: ${set.w} lbs` : '', set.note].filter(Boolean).join('\n');
       await notionRequest('pages', {
         body: {
           parent: { database_id: logDbId },
           properties: {
             Exercise: { title: [{ text: { content: exercise.name } }] },
             Date: { date: { start: date } },
-            Weight: { number: set.w },
+            Weight: { number: weightKg },
             Reps: { number: set.r },
             Rest: { number: parseInteger(exercise.defaultPause, 0) },
-            ...(set.note ? { Notes: { rich_text: [{ text: { content: set.note } }] } } : {})
+            ...(note ? { Notes: { rich_text: [{ text: { content: note } }] } } : {})
           }
         }
       });

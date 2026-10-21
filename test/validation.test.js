@@ -33,6 +33,15 @@ test('normalizeRoutine fills in defaults', () => {
   assert.equal(routine.exercises[0].targetSets, 4);
   assert.equal(routine.exercises[0].targetReps, 8);
   assert.equal(routine.exercises[0].defaultPause, 90);
+  assert.equal(routine.exercises[0].weightUnit, 'kg');
+});
+
+test('routine units and per-set units survive API normalization', () => {
+  const routine = normalizeRoutine({ exercises: [{ weightUnit: 'lbs' }, { weightUnit: 'invalid' }] });
+  assert.equal(routine.exercises[0].weightUnit, 'lbs');
+  assert.equal(routine.exercises[1].weightUnit, 'kg');
+  assert.deepEqual(normalizeWorkoutLog({ press: [{ w: '100', r: '8', weightUnit: 'lbs' }] }).press,
+    [{ w: 100, r: 8, weightUnit: 'lbs', note: '' }]);
 });
 
 test('normalizeWorkoutLog coerces values and strips invalid sets', () => {

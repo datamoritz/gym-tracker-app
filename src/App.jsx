@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
+import { weightUnit, convertWeight, moveExercise, buildFeedbackWorkout } from './workout.mjs';
 
 const MOTIVATIONS = [
   'Stronger than yesterday.',
@@ -63,6 +64,22 @@ function Notice({ message, tone = 'error' }) {
   );
 }
 
+function WeightUnitToggle({ value, onChange, disabled = false, label }) {
+  return (
+    <div className="weight-unit-toggle" role="group" aria-label={label}>
+      {['kg', 'lbs'].map(unit => (
+        <button key={unit} type="button" aria-pressed={weightUnit(value) === unit} disabled={disabled}
+          onClick={() => onChange(unit)}>{unit}</button>
+      ))}
+    </div>
+  );
+}
+
+function getExerciseUnits(routines) {
+  return Object.fromEntries(routines.flatMap(routine => (routine.exercises || [])
+    .map(exercise => [exercise.name.trim().toLowerCase(), weightUnit(exercise.weightUnit)])));
+}
+
 function parseFeedbackText(text, keyPrefix) {
   const segments = [];
   const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
@@ -109,7 +126,7 @@ function formatChartDate(value) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function buildExerciseAnalytics(workouts) {
+function buildExerciseAnalytics(workouts, units = {}) {
   const chronologicalWorkouts = [...(workouts || [])].reverse();
   const grouped = new Map();
 
@@ -121,6 +138,7 @@ function buildExerciseAnalytics(workouts) {
     if (!grouped.has(key)) {
       grouped.set(key, {
         exerciseName,
+        weightUnit: weightUnit(units[key]),
         points: [],
         sessions: new Set(),
         totalVolume: 0,
@@ -130,7 +148,7 @@ function buildExerciseAnalytics(workouts) {
     }
 
     const entry = grouped.get(key);
-    const weight = Number(workout.weight) || 0;
+    const weight = convertWeight(workout.weight, workout.weightUnit, entry.weightUnit);
     const reps = Number(workout.reps) || 0;
     const date = workout.date || null;
 
@@ -140,6 +158,7 @@ function buildExerciseAnalytics(workouts) {
       x: entry.points.length + 1,
       date,
       weight,
+      weightUnit: entry.weightUnit,
       reps,
       notes: workout.notes || '',
       sessionStart: !entry.points.length || entry.points[entry.points.length - 1].date !== date
@@ -169,6 +188,7 @@ function buildExerciseAnalytics(workouts) {
 
       return {
         exerciseName: entry.exerciseName,
+        weightUnit: entry.weightUnit,
         points: entry.points,
         sessionCount: entry.sessions.size,
         totalVolume: Math.round(entry.totalVolume),
@@ -182,7 +202,7 @@ function buildExerciseAnalytics(workouts) {
     .sort((left, right) => left.exerciseName.localeCompare(right.exerciseName));
 }
 
-function mergeLiveExercisePoints(points, loggedSets, exerciseName) {
+function mergeLiveExercisePoints(points, loggedSets, exerciseName, unit) {
   const normalizedName = typeof exerciseName === 'string' ? exerciseName.trim() : '';
   if (!loggedSets?.length || !normalizedName) return points;
 
@@ -196,7 +216,8 @@ function mergeLiveExercisePoints(points, loggedSets, exerciseName) {
       exerciseName: normalizedName,
       x: nextPoints.length + 1,
       date: today,
-      weight: Number(set.w) || 0,
+      weight: convertWeight(set.w, set.weightUnit || unit, unit),
+      weightUnit: unit,
       reps: Number(set.r) || 0,
       notes: set.note || '',
       sessionStart: index === 0 ? lastDate !== today : false,
@@ -208,10 +229,9 @@ function mergeLiveExercisePoints(points, loggedSets, exerciseName) {
 }
 
 function AnalyticsChart({ points, compact = false, subtitle = 'Each point is one logged set.' }) {
-  if (!points.length) return null;
-
   const scrollRef = useRef(null);
   const latestPoint = points[points.length - 1];
+  const unit = weightUnit(latestPoint?.weightUnit);
   const width = 840;
   const height = compact ? 250 : 300;
   const padding = compact
@@ -240,17 +260,19 @@ function AnalyticsChart({ points, compact = false, subtitle = 'Each point is one
     scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
   }, [points]);
 
+  if (!points.length) return null;
+
   return (
     <div className="analytics-panel p-4">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div className="min-w-[140px] flex-1">
           <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Trajectory</p>
           <p className="text-sm text-[#9aa0a6]">{subtitle}</p>
         </div>
-        <div className="shrink-0 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-right">
+        <div className="shrink-0 ml-auto rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-right">
           <p className="mb-1 text-[9px] font-black uppercase tracking-[0.18em] text-[#6f747b]">Last used</p>
           <div className="flex items-center justify-end gap-2 text-xs font-bold tabular-nums">
-            <span className="flex items-center gap-1.5 text-[#c9d7f8]"><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: weightColor }}></span>{latestPoint.weight} kg</span>
+            <span className="flex items-center gap-1.5 text-[#c9d7f8]"><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: weightColor }}></span>{latestPoint.weight} {unit}</span>
             <span className="text-[#50545a]">×</span>
             <span className="flex items-center gap-1.5 text-[#b8f3e1]"><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: repsColor }}></span>{latestPoint.reps} reps</span>
           </div>
@@ -317,7 +339,7 @@ function AnalyticsChart({ points, compact = false, subtitle = 'Each point is one
             <g key={point.id}>
               <circle cx={getX(index)} cy={getY(point.weight)} r="4.5" fill={weightColor} />
               <circle cx={getX(index)} cy={getY(point.weight)} r="12" fill="transparent">
-                <title>{`${point.exerciseName || ''}${point.exerciseName ? '\n' : ''}${formatChartDate(point.date)}\nWeight: ${point.weight} kg\nReps: ${point.reps}${point.notes ? `\nNotes: ${point.notes}` : ''}`}</title>
+                <title>{`${point.exerciseName || ''}${point.exerciseName ? '\n' : ''}${formatChartDate(point.date)}\nWeight: ${point.weight} ${unit}\nReps: ${point.reps}${point.notes ? `\nNotes: ${point.notes}` : ''}`}</title>
               </circle>
               <circle cx={getX(index)} cy={getY(point.reps)} r="4.5" fill={repsColor} />
             </g>
@@ -361,6 +383,8 @@ export default function App() {
   const [isLogging, setIsLogging] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [completedWorkout, setCompletedWorkout] = useState(null);
+  const [isSavingUnit, setIsSavingUnit] = useState(false);
   const [aiFeedback, setAiFeedback] = useState(null);
   const [aiFeedbackLoading, setAiFeedbackLoading] = useState(false);
   const [userProfile, setUserProfile] = useState(() => JSON.parse(localStorage.getItem('gym_user_profile') || '{"bodyweight":75,"experienceLevel":"intermediate","goal":"hypertrophy","weeklySplit":"Push Pull Legs"}'));
@@ -368,9 +392,11 @@ export default function App() {
   const [noticeTone, setNoticeTone] = useState('error');
   const [analyticsWorkouts, setAnalyticsWorkouts] = useState([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState('');
   const timerRef = useRef(null);
   const audioCtxRef = useRef(null);
+  const feedbackRequestRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -390,10 +416,10 @@ export default function App() {
   useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem('gym_user_profile', JSON.stringify(userProfile)); }, [userProfile]);
   useEffect(() => {
-    if ((view === 'analytics' || view === 'active') && notionAvailable && !analyticsWorkouts.length && !analyticsLoading) {
+    if ((view === 'analytics' || view === 'active') && notionAvailable && !analyticsLoaded && !analyticsLoading) {
       fetchWorkoutAnalytics();
     }
-  }, [view, notionAvailable, analyticsWorkouts.length, analyticsLoading]);
+  }, [view, notionAvailable, analyticsLoaded, analyticsLoading]);
 
   useEffect(() => {
     if (view === 'active' && activeRoutine && activeRoutine.exercises) {
@@ -402,14 +428,14 @@ export default function App() {
       if (!exercise) return;
       const logs = workoutLog[exercise.id] || [];
       if (logs.length > 0) {
-        setInputWeight(logs[logs.length - 1].w);
+        setInputWeight(convertWeight(logs[logs.length - 1].w, logs[logs.length - 1].weightUnit || exercise.weightUnit, exercise.weightUnit));
         setInputReps(logs[logs.length - 1].r);
       } else {
         setInputWeight(exercise.suggestedWeight || 0);
         setInputReps(exercise.targetReps || 10);
       }
     }
-  }, [currentExerciseIndex, view, activeRoutine, workoutLog]);
+  }, [currentExerciseIndex, view, workoutLog]);
 
   async function fetchExercisesFromNotion() {
     if (!notionAvailable) return;
@@ -449,6 +475,8 @@ export default function App() {
   }
 
   async function fetchAIFeedback(workoutPayload) {
+    if (aiFeedbackLoading || !workoutPayload) return;
+    const requestId = ++feedbackRequestRef.current;
     setAiFeedbackLoading(true);
     setAiFeedback(null);
     try {
@@ -466,13 +494,16 @@ export default function App() {
         })
       });
       const data = await readJson(response);
+      if (requestId !== feedbackRequestRef.current) return;
       setAiFeedback(data.feedback || 'No feedback available.');
+      setView(current => current === 'success' ? 'feedback' : current);
     } catch (error) {
-      setAiFeedback('Could not generate feedback.');
+      if (requestId !== feedbackRequestRef.current) return;
+      setAiFeedback(null);
       setNotice(error.message || 'Could not generate AI feedback.');
       setNoticeTone('error');
     }
-    setAiFeedbackLoading(false);
+    if (requestId === feedbackRequestRef.current) setAiFeedbackLoading(false);
   }
 
   async function fetchWorkoutAnalytics() {
@@ -483,7 +514,7 @@ export default function App() {
       const data = await readJson(response);
       const workouts = data.workouts || [];
       setAnalyticsWorkouts(workouts);
-      const entries = buildExerciseAnalytics(workouts);
+      const entries = buildExerciseAnalytics(workouts, getExerciseUnits(routines));
       if (entries.length && !entries.some(entry => entry.exerciseName === selectedExercise)) {
         setSelectedExercise(entries[0].exerciseName);
       }
@@ -493,6 +524,7 @@ export default function App() {
       setNoticeTone('error');
     } finally {
       setAnalyticsLoading(false);
+      setAnalyticsLoaded(true);
     }
   }
 
@@ -500,22 +532,7 @@ export default function App() {
     setIsLogging(true);
     try {
       const today = new Date().toISOString().split('T')[0];
-      const workoutPayload = {
-        workout_type: activeRoutine.name,
-        date: today,
-        exercises: Object.entries(workoutLog).map(([exerciseId, sets]) => {
-          const exercise = activeRoutine.exercises.find(item => item.id.toString() === exerciseId.toString());
-          if (!exercise) return null;
-          return {
-            name: exercise.name,
-            sets: sets.length,
-            reps: sets.map(set => parseInt(set.r, 10)),
-            weight: sets.map(set => parseFloat(set.w)),
-            rest_sec: parseInt(exercise.defaultPause, 10) || 60,
-            ...(sets.some(set => set.note) ? { notes: sets.map((set, index) => set.note ? `Set ${index + 1}: ${set.note}` : '').filter(Boolean).join('; ') } : {})
-          };
-        }).filter(Boolean)
-      };
+      const workoutPayload = buildFeedbackWorkout(activeRoutine, workoutLog, today);
 
       if (notionAvailable) {
         const response = await fetch('/api/workouts', {
@@ -538,8 +555,13 @@ export default function App() {
       setHistory(prev => [{ id: Date.now(), date: today, routineName: activeRoutine.name, summary: notionAvailable ? 'Synced' : 'Local' }, ...prev]);
       confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
       setSuccessMessage(MOTIVATIONS[Math.floor(Math.random() * MOTIVATIONS.length)]);
+      setCompletedWorkout(workoutPayload);
+      setAiFeedback(null);
+      setTimerActive(false);
+      setTargetEndTime(null);
+      setAnalyticsWorkouts([]);
+      setAnalyticsLoaded(false);
       setView('success');
-      fetchAIFeedback(workoutPayload);
     } catch (error) {
       setNotice(error.message || 'Could not save workout log.');
       setNoticeTone('error');
@@ -561,7 +583,7 @@ export default function App() {
       setNoticeTone('success');
       return data.routine || routine;
     } catch (error) {
-      setNotice(error.message || 'Could not save routine.');
+      setNotice(`Routine saved locally. Notion sync failed: ${error.message || 'Please try again.'}`);
       setNoticeTone('error');
       return routine;
     }
@@ -585,6 +607,42 @@ export default function App() {
       setView('home');
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  function updateExercise(index, changes) {
+    setActiveRoutine(routine => ({
+      ...routine,
+      exercises: routine.exercises.map((exercise, position) => position === index ? { ...exercise, ...changes } : exercise)
+    }));
+  }
+
+  async function changeWeightUnit(index, nextUnit, persist = false) {
+    const exercise = activeRoutine.exercises[index];
+    const previousUnit = weightUnit(exercise.weightUnit);
+    if (previousUnit === nextUnit || isSavingUnit) return;
+    const nextRoutine = {
+      ...activeRoutine,
+      exercises: activeRoutine.exercises.map((item, position) => position === index ? {
+        ...item,
+        weightUnit: nextUnit,
+        suggestedWeight: convertWeight(item.suggestedWeight, previousUnit, nextUnit)
+      } : item)
+    };
+    setActiveRoutine(nextRoutine);
+    if (!persist) return;
+    setInputWeight(convertWeight(inputWeight, previousUnit, nextUnit));
+    setRoutines(previous => previous.map(routine => routine.id === nextRoutine.id ? nextRoutine : routine));
+    setIsSavingUnit(true);
+    try {
+      const saved = await saveRoutineToNotion(nextRoutine);
+      // Only merge the page ID: a later edit may already have changed the routine.
+      if (saved.notionPageId) {
+        setRoutines(previous => previous.map(routine => routine.id === saved.id ? { ...routine, notionPageId: saved.notionPageId } : routine));
+        setActiveRoutine(previous => previous?.id === saved.id ? { ...previous, notionPageId: saved.notionPageId } : previous);
+      }
+    } finally {
+      setIsSavingUnit(false);
     }
   }
 
@@ -674,8 +732,8 @@ export default function App() {
                 <p className="text-[10px] text-[#9e9e9e] font-bold uppercase">{(routine.exercises || []).length} Exercises</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { setActiveRoutine(routine); setView('planner'); }} className="p-3"><Icons.Settings /></button>
-                <button disabled={!routine.exercises?.length} onClick={() => { setActiveRoutine(routine); setCurrentExerciseIndex(0); setWorkoutLog({}); setCurrentNote(''); setAiFeedback(null); setAiFeedbackLoading(false); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
+                <button aria-label={`Edit ${routine.name}`} onClick={() => { setActiveRoutine(routine); setView('planner'); }} className="p-3"><Icons.Settings /></button>
+                <button aria-label={`Start ${routine.name}`} disabled={!routine.exercises?.length} onClick={() => { setActiveRoutine(routine); setCurrentExerciseIndex(0); setWorkoutLog({}); setCurrentNote(''); setAiFeedback(null); setCompletedWorkout(null); feedbackRequestRef.current += 1; setAiFeedbackLoading(false); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
               </div>
             </div>
           ))}
@@ -695,31 +753,41 @@ export default function App() {
           <input value={activeRoutine.name} onChange={event => setActiveRoutine({ ...activeRoutine, name: event.target.value })} className="text-3xl font-bold bg-transparent w-full text-white italic outline-none" />
           <div className="flex flex-wrap gap-2">
             {[...notionExercises].sort((left, right) => (left.tag || '').localeCompare(right.tag || '')).map((exercise, index) => (
-              <button key={index} onClick={() => setActiveRoutine({ ...activeRoutine, exercises: [...activeRoutine.exercises, { id: Math.random(), name: exercise.name, defaultPause: exercise.pause, targetSets: exercise.sets, suggestedWeight: exercise.weight, targetReps: 10 }] })} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2 transition-all duration-100 active:scale-95 active:bg-[#8ab4f8]/20 active:border-[#8ab4f8]/50"><span className="bg-[#3c4043] px-1.5 rounded text-[8px] text-[#8ab4f8]">{exercise.tag}</span> {exercise.name}</button>
+              <button key={index} onClick={() => setActiveRoutine({ ...activeRoutine, exercises: [...activeRoutine.exercises, { id: Math.random(), name: exercise.name, defaultPause: exercise.pause, targetSets: exercise.sets, suggestedWeight: exercise.weight, targetReps: 10, weightUnit: weightUnit(exercise.weightUnit) }] })} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2 transition-all duration-100 active:scale-95 active:bg-[#8ab4f8]/20 active:border-[#8ab4f8]/50"><span className="bg-[#3c4043] px-1.5 rounded text-[8px] text-[#8ab4f8]">{exercise.tag}</span> {exercise.name}</button>
             ))}
           </div>
           {activeRoutine.exercises.map((exercise, index) => (
             <div key={exercise.id} className="p-5 dark-card space-y-4">
               <div className="flex justify-between items-center">
-                <input value={exercise.name} onChange={event => { const nextRoutine = { ...activeRoutine }; nextRoutine.exercises[index].name = event.target.value; setActiveRoutine(nextRoutine); }} className="font-bold bg-transparent outline-none w-full" />
-                <button onClick={() => { const nextRoutine = { ...activeRoutine }; nextRoutine.exercises.splice(index, 1); setActiveRoutine(nextRoutine); }} className="p-2 text-[#3c4043] hover:text-[#9e9e9e]"><Icons.Trash /></button>
+                <input value={exercise.name} onChange={event => updateExercise(index, { name: event.target.value })} aria-label={`Exercise ${index + 1} name`} className="font-bold bg-transparent outline-none w-full min-w-0" />
+                <div className="flex items-center shrink-0 gap-1 ml-2">
+                  <button type="button" aria-label={`Move ${exercise.name} up`} title="Move up" disabled={index === 0}
+                    onClick={() => setActiveRoutine(routine => ({ ...routine, exercises: moveExercise(routine.exercises, index, -1) }))} className="reorder-button">↑</button>
+                  <button type="button" aria-label={`Move ${exercise.name} down`} title="Move down" disabled={index === activeRoutine.exercises.length - 1}
+                    onClick={() => setActiveRoutine(routine => ({ ...routine, exercises: moveExercise(routine.exercises, index, 1) }))} className="reorder-button">↓</button>
+                  <button aria-label={`Remove ${exercise.name}`} onClick={() => setActiveRoutine(routine => ({ ...routine, exercises: routine.exercises.filter((_, position) => position !== index) }))} className="p-2 text-[#9e9e9e]"><Icons.Trash /></button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-black text-zinc-500 uppercase">Weight unit</span>
+                <WeightUnitToggle value={exercise.weightUnit} onChange={unit => changeWeightUnit(index, unit)} label={`Weight unit for ${exercise.name}`} />
               </div>
               <div className="grid grid-cols-4 gap-2">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-zinc-500 uppercase block">Sets</label>
-                  <input type="number" value={exercise.targetSets} onChange={event => { const value = parseFloat(event.target.value) || 0; const nextRoutine = { ...activeRoutine }; nextRoutine.exercises[index].targetSets = value; setActiveRoutine(nextRoutine); }} className="planner-input" />
+                  <input type="number" value={exercise.targetSets} onChange={event => updateExercise(index, { targetSets: parseFloat(event.target.value) || 0 })} className="planner-input" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-zinc-500 uppercase block">Reps</label>
-                  <input type="number" value={exercise.targetReps} onChange={event => { const value = parseFloat(event.target.value) || 0; const nextRoutine = { ...activeRoutine }; nextRoutine.exercises[index].targetReps = value; setActiveRoutine(nextRoutine); }} className="planner-input" />
+                  <input type="number" value={exercise.targetReps} onChange={event => updateExercise(index, { targetReps: parseFloat(event.target.value) || 0 })} className="planner-input" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase block">Kg</label>
-                  <input type="number" value={exercise.suggestedWeight} onChange={event => { const value = parseFloat(event.target.value) || 0; const nextRoutine = { ...activeRoutine }; nextRoutine.exercises[index].suggestedWeight = value; setActiveRoutine(nextRoutine); }} className="planner-input" />
+                  <label className="text-[10px] font-black text-zinc-500 uppercase block">{weightUnit(exercise.weightUnit)}</label>
+                  <input type="number" value={exercise.suggestedWeight} onChange={event => updateExercise(index, { suggestedWeight: parseFloat(event.target.value) || 0 })} className="planner-input" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-zinc-500 uppercase block">Rest</label>
-                  <input type="number" value={exercise.defaultPause} onChange={event => { const value = parseFloat(event.target.value) || 0; const nextRoutine = { ...activeRoutine }; nextRoutine.exercises[index].defaultPause = value; setActiveRoutine(nextRoutine); }} className="planner-input" />
+                  <input type="number" value={exercise.defaultPause} onChange={event => updateExercise(index, { defaultPause: parseFloat(event.target.value) || 0 })} className="planner-input" />
                 </div>
               </div>
             </div>
@@ -733,9 +801,11 @@ export default function App() {
   if (view === 'active') {
     const exercise = activeRoutine.exercises[currentExerciseIndex];
     const logged = workoutLog[exercise.id] || [];
-    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts);
+    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts, getExerciseUnits(routines));
     const activeEntry = exerciseEntries.find(entry => entry.exerciseName.toLowerCase() === exercise.name.toLowerCase()) || null;
-    const playModePoints = mergeLiveExercisePoints(activeEntry?.points || [], logged, exercise.name);
+    const unit = weightUnit(exercise.weightUnit);
+    const historicalPoints = (activeEntry?.points || []).map(point => ({ ...point, weight: convertWeight(point.weight, point.weightUnit, unit), weightUnit: unit }));
+    const playModePoints = mergeLiveExercisePoints(historicalPoints, logged, exercise.name, unit);
 
     return (
       <div className="min-h-screen bg-[#131314]">
@@ -745,10 +815,12 @@ export default function App() {
         <main className="p-6 space-y-8 pb-48">
           <div className="flex gap-4">
             <div className="flex-1 space-y-3">
-              <div className="p-8 dark-card text-center relative bg-[#1e1f20]">
+              <div className="load-card px-4 pt-6 pb-12 dark-card text-center relative bg-[#1e1f20]">
                 <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Load</span>
-                <input type="text" inputMode="decimal" value={inputWeight} onChange={event => setInputWeight(event.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
-                <span className="text-[10px] font-black text-[#8ab4f8] uppercase absolute bottom-3 left-0 right-0">KG</span>
+                <input type="text" inputMode="decimal" aria-label={`Weight in ${unit}`} style={{ fontSize: `min(48px, calc(100cqw / ${Math.max(String(inputWeight).length, 4) * 0.65}))` }} value={inputWeight} onChange={event => setInputWeight(event.target.value)} className="text-4xl sm:text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
+                <div className="absolute bottom-2 left-0 right-0 flex justify-center">
+                  <WeightUnitToggle value={unit} disabled={isSavingUnit} onChange={nextUnit => changeWeightUnit(currentExerciseIndex, nextUnit, true)} label={`Weight unit for ${exercise.name}`} />
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setInputWeight(prev => Math.max(0, parseFloat(prev) - 5))} className="flex-1 py-2 bg-[#28292c] text-[#9e9e9e] rounded-xl font-black text-xs">-5</button>
@@ -758,9 +830,9 @@ export default function App() {
               </div>
             </div>
             <div className="flex-1 space-y-3">
-              <div className="p-8 dark-card text-center relative bg-[#1e1f20]">
+              <div className="px-4 pt-6 pb-12 dark-card text-center relative bg-[#1e1f20]">
                 <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Reps</span>
-                <input type="number" value={inputReps} onChange={event => setInputReps(event.target.value)} className="text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
+                <input type="number" aria-label="Reps" value={inputReps} onChange={event => setInputReps(event.target.value)} className="text-4xl sm:text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
                 <span className="text-[10px] font-black text-[#8ab4f8] uppercase absolute bottom-3 left-0 right-0">REPS</span>
               </div>
               <div className="flex gap-2">
@@ -782,8 +854,9 @@ export default function App() {
               subtitle={logged.length ? 'Live session sets are appended on the right.' : 'Weight and reps across prior sessions.'}
             />
           )}
-          <button onClick={() => { const nextWorkoutLog = { ...workoutLog }; if (!nextWorkoutLog[exercise.id]) nextWorkoutLog[exercise.id] = []; nextWorkoutLog[exercise.id].push({ w: parseFloat(inputWeight) || 0, r: inputReps, note: currentNote }); setWorkoutLog(nextWorkoutLog); setCurrentNote(''); startTimer(exercise.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length + 1} / {exercise.targetSets}</button>
-          <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w}KG × {set.r}</div>)}</div>
+          <p className="text-[11px] text-[#9e9e9e]">Unit remembered for this exercise. Switching converts the current weight.</p>
+          <button onClick={() => { const nextWorkoutLog = { ...workoutLog }; if (!nextWorkoutLog[exercise.id]) nextWorkoutLog[exercise.id] = []; nextWorkoutLog[exercise.id].push({ w: parseFloat(inputWeight) || 0, r: inputReps, weightUnit: unit, note: currentNote }); setWorkoutLog(nextWorkoutLog); setCurrentNote(''); startTimer(exercise.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length + 1} / {exercise.targetSets}</button>
+          <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w} {weightUnit(set.weightUnit)} × {set.r}</div>)}</div>
           <div className="space-y-1">
             <label className="text-[10px] font-black text-zinc-500 uppercase">Note for Set {logged.length + 1}</label>
             <textarea value={currentNote} onChange={event => setCurrentNote(event.target.value)} placeholder="How did it feel? Any adjustments..." rows={2} className="w-full bg-[#1e1f20] border border-[#3c4043] rounded-2xl p-4 text-sm text-[#e3e3e3] outline-none resize-none placeholder-[#3c4043] focus:border-[#8ab4f8]/40" />
@@ -824,9 +897,12 @@ export default function App() {
             Analyzing your workout...
           </div>
         )}
-        {aiFeedback && !aiFeedbackLoading && (
-          <button onClick={() => setView('feedback')} className="w-full py-5 bg-[#1e1f20] border border-[#8ab4f8]/40 text-[#8ab4f8] rounded-[24px] font-bold">View AI Feedback</button>
-        )}
+        <button disabled={aiFeedbackLoading || !completedWorkout} onClick={async () => {
+          if (aiFeedback) { setView('feedback'); return; }
+          await fetchAIFeedback(completedWorkout);
+        }} className="w-full py-5 bg-[#1e1f20] border border-[#8ab4f8]/40 text-[#8ab4f8] rounded-[24px] font-bold disabled:opacity-50">
+          {aiFeedbackLoading ? 'Analyzing...' : aiFeedback ? 'View AI Feedback' : 'Get AI Feedback'}
+        </button>
         <button onClick={() => setView('home')} className="w-full py-6 bg-white text-black rounded-3xl font-black italic">Return Home</button>
       </div>
     );
@@ -864,11 +940,12 @@ export default function App() {
   }
 
   if (view === 'analytics') {
-    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts);
+    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts, getExerciseUnits(routines));
     const activeEntry = exerciseEntries.find(entry => entry.exerciseName === selectedExercise) || exerciseEntries[0] || null;
     const latestPoint = activeEntry?.latestPoint || null;
     const previousPoint = activeEntry?.previousPoint || null;
-    const weightDelta = latestPoint && previousPoint ? (latestPoint.weight - previousPoint.weight) : null;
+    const unit = weightUnit(activeEntry?.weightUnit);
+    const weightDelta = latestPoint && previousPoint ? Math.round((latestPoint.weight - previousPoint.weight) * 100) / 100 : null;
     const repsDelta = latestPoint && previousPoint ? (latestPoint.reps - previousPoint.reps) : null;
 
     return (
@@ -928,24 +1005,24 @@ export default function App() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="analytics-panel p-4">
                   <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Latest Set</p>
-                  <p className="mt-3 text-2xl font-black text-white">{latestPoint ? `${latestPoint.weight}kg` : '--'}</p>
+                  <p className="mt-3 text-2xl font-black text-white">{latestPoint ? `${latestPoint.weight} ${unit}` : '--'}</p>
                   <p className="text-sm text-[#9aa0a6]">{latestPoint ? `${latestPoint.reps} reps on ${formatChartDate(latestPoint.date)}` : 'No data yet'}</p>
                   {weightDelta !== null && repsDelta !== null && (
                     <p className={`mt-3 text-xs font-bold ${weightDelta > 0 || repsDelta > 0 ? 'text-[#7ef0c7]' : 'text-[#9aa0a6]'}`}>
-                      {`${weightDelta >= 0 ? '+' : ''}${weightDelta}kg / ${repsDelta >= 0 ? '+' : ''}${repsDelta} reps vs previous set`}
+                      {`${weightDelta >= 0 ? '+' : ''}${weightDelta} ${unit} / ${repsDelta >= 0 ? '+' : ''}${repsDelta} reps vs previous set`}
                     </p>
                   )}
                 </div>
                 <div className="analytics-panel p-4">
                   <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Best Envelope</p>
-                  <p className="mt-3 text-2xl font-black text-white">{activeEntry.maxWeight}kg</p>
+                  <p className="mt-3 text-2xl font-black text-white">{activeEntry.maxWeight} {unit}</p>
                   <p className="text-sm text-[#9aa0a6]">Peak load, with a rep ceiling of {activeEntry.maxReps}</p>
                   <p className="mt-3 text-xs font-bold text-[#8ab4f8]">{activeEntry.sessionCount} logged sessions</p>
                 </div>
                 <div className="analytics-panel p-4">
                   <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Volume Flow</p>
                   <p className="mt-3 text-2xl font-black text-white">{activeEntry.totalVolume}</p>
-                  <p className="text-sm text-[#9aa0a6]">Total kg-reps accumulated for this exercise</p>
+                  <p className="text-sm text-[#9aa0a6]">Total {unit}-reps accumulated for this exercise</p>
                 </div>
                 <div className="analytics-panel p-4">
                   <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Cadence</p>

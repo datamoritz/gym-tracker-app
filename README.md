@@ -51,3 +51,21 @@ npm test
 ```
 
 The current tests cover the request/data validation helpers in `api/_lib`.
+
+## Exercise order and weight units
+
+Use the planner's up/down arrows to reorder exercises, then **Save Protocol**.
+Each exercise has a kg/lbs toggle in the planner and during a workout. Switching
+units converts the current load; the existing weight adjustment buttons still
+work in the selected unit. Changes during a workout are saved immediately to
+the local routine and synced to Notion. Planner changes use **Save Protocol**.
+
+No Notion schema changes are required. Order and `weightUnit` are stored in the
+routine database's existing JSON property. Existing exercises default to kg.
+The workout log's numeric Weight property continues to store kilograms for
+consistent comparisons; pound entries also record their original load in Notes.
+Charts display weights in the exercise's selected unit. Exercise library Weight
+text can include `lbs` (for example `100 lbs`) to set its initial unit.
+
+Completing a session saves the workout without requesting AI analysis. Use
+**Get AI Feedback** on the completion screen to request it; failures can be retried.
