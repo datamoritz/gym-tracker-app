@@ -11,7 +11,7 @@ function mockNotion(t, respond) {
     else process.env[key] = original[key];
   }));
   t.mock.method(global, 'fetch', async (url, options) => {
-    const data = respond(url, JSON.parse(options.body), options);
+    const data = respond(url, options.body === undefined ? undefined : JSON.parse(options.body), options);
     return { ok: true, text: async () => JSON.stringify(data) };
   });
 }
@@ -35,6 +35,60 @@ test('Notion routine round-trip preserves exercise order and units, including lo
   const [loaded] = await provider.listRoutines();
   assert.deepEqual(loaded.exercises.map(item => [item.id, item.weightUnit]),
     routine.exercises.map(item => [item.id, item.weightUnit]));
+});
+
+test('exercise guides preserve rich-text segments, uploaded and external images, and missing fields', async t => {
+  mockNotion(t, () => ({ results: [{ id: 'guide', properties: {
+    'Exercise Name': { title: [{ plain_text: 'Chest Fly' }] },
+    'Muscles Worked': { rich_text: [{ plain_text: 'Chest — ' }, { plain_text: 'Primary' }] },
+    Instructions: { rich_text: [{ plain_text: '1. Sit tall.\n' }, { plain_text: '2. Move slowly.' }] },
+    'Common Mistakes': { rich_text: [{ plain_text: 'Avoid swinging.' }] },
+    'Source URL': { url: 'https://example.com/guide' },
+    Images: { files: [
+      { name: 'fly.avif', file: { url: 'https://example.com/signed.avif', expiry_time: '2026-10-22T00:00:00Z' } },
+      { name: 'fly.webp', external: { url: 'https://example.com/fly.webp' } },
+      { name: 'incomplete' }
+    ] }
+  } }, { id: 'empty', properties: {} }] }));
+  const [guide, empty] = await provider.listExercises();
+  assert.equal(guide.musclesWorked, 'Chest — Primary');
+  assert.equal(guide.instructions, '1. Sit tall.\n2. Move slowly.');
+  assert.equal(guide.commonMistakes, 'Avoid swinging.');
+  assert.equal(guide.sourceUrl, 'https://example.com/guide');
+  assert.deepEqual(guide.images, [
+    { name: 'fly.avif', url: 'https://example.com/signed.avif', expiryTime: '2026-10-22T00:00:00Z' },
+    { name: 'fly.webp', url: 'https://example.com/fly.webp', expiryTime: null }
+  ]);
+  assert.equal(empty.instructions, '');
+  assert.deepEqual(empty.images, []);
+});
+
+test('opening a guide fetches a fresh page and only allows exercise database pages', async t => {
+  let parent = 'test-only';
+  let archived = false;
+  mockNotion(t, (url, body, options) => {
+    assert.equal(options.method, 'GET');
+    assert.equal(body, undefined);
+    return { id: '2b3fe23d-5e3c-802f-b092-f8f679d3e372', parent: { database_id: parent }, archived, properties: {
+      Images: { files: [{ name: 'raise.avif', file: { url: 'https://example.com/fresh.avif' } }] }
+    } };
+  });
+  const id = '2b3fe23d-5e3c-802f-b092-f8f679d3e372';
+  assert.equal((await provider.getExercise(id)).images[0].url, 'https://example.com/fresh.avif');
+  parent = 'another-database';
+  await assert.rejects(provider.getExercise(id), { status: 404 });
+  parent = 'test-only';
+  archived = true;
+  await assert.rejects(provider.getExercise(id), { status: 404 });
+  await assert.rejects(provider.getExercise('../other'), { status: 400 });
+  await assert.rejects(provider.getExercise([id]), { status: 400 });
+});
+
+test('the exercise library includes later pages of Notion results', async t => {
+  mockNotion(t, (url, body) => body.start_cursor
+    ? { results: [{ id: 'second', properties: {} }], has_more: false }
+    : { results: [{ id: 'first', properties: {} }], has_more: true, next_cursor: 'next' });
+  assert.deepEqual((await provider.listExercises()).map(exercise => exercise.id), ['first', 'second']);
 });
 
 test('mixed-unit sets use the existing kg column and preserve original pounds and notes', async t => {

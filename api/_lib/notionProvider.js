@@ -53,6 +53,8 @@ async function notionRequest(path, { method = 'POST', body } = {}) {
 function mapExercisePage(page) {
   const properties = page.properties || {};
   const weightText = properties.Weight?.rich_text?.[0]?.plain_text || '0';
+  const richText = name => (properties[name]?.rich_text || [])
+    .map(item => item.plain_text ?? item.text?.content ?? '').join('');
 
   return {
     id: page.id,
@@ -61,7 +63,16 @@ function mapExercisePage(page) {
     sets: parseInteger(properties.Sets?.rich_text?.[0]?.plain_text, 3),
     pause: parseInteger(properties.Pause?.rich_text?.[0]?.plain_text, 90),
     weight: parseNumber(weightText.match(/[\d.]+/)?.[0], 0),
-    weightUnit: /\b(lbs?|pounds?)\b/i.test(weightText) ? 'lbs' : 'kg'
+    weightUnit: /\b(lbs?|pounds?)\b/i.test(weightText) ? 'lbs' : 'kg',
+    musclesWorked: richText('Muscles Worked'),
+    instructions: richText('Instructions'),
+    commonMistakes: richText('Common Mistakes'),
+    sourceUrl: properties['Source URL']?.url || '',
+    images: (properties.Images?.files || []).map(file => ({
+      name: file.name || 'Exercise illustration',
+      url: file.file?.url || file.external?.url || '',
+      expiryTime: file.file?.expiry_time || null
+    })).filter(image => image.url)
   };
 }
 
@@ -81,16 +92,35 @@ function mapRoutinePage(page) {
 
 async function listExercises() {
   const exerciseDbId = requireEnv('EXERCISE_DB_ID');
-  const data = await notionRequest(`databases/${exerciseDbId}/query`, {
-    body: {
-      filter: {
-        property: 'Routine',
-        select: { is_not_empty: true }
+  const exercises = [];
+  let cursor;
+  do {
+    const data = await notionRequest(`databases/${exerciseDbId}/query`, {
+      body: {
+        filter: { property: 'Routine', select: { is_not_empty: true } },
+        ...(cursor ? { start_cursor: cursor } : {})
       }
-    }
-  });
+    });
+    exercises.push(...(data.results || []).map(mapExercisePage));
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+  return exercises;
+}
 
-  return (data?.results || []).map(mapExercisePage);
+async function getExercise(id) {
+  if (typeof id !== 'string' || !/^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/i.test(id)) {
+    const error = new Error('Invalid exercise ID');
+    error.status = 400;
+    throw error;
+  }
+  const page = await notionRequest(`pages/${id}`, { method: 'GET' });
+  const normalizeId = value => String(value || '').replaceAll('-', '').toLowerCase();
+  if (normalizeId(page.parent?.database_id) !== normalizeId(requireEnv('EXERCISE_DB_ID')) || page.archived || page.in_trash) {
+    const error = new Error('Exercise not found');
+    error.status = 404;
+    throw error;
+  }
+  return mapExercisePage(page);
 }
 
 async function listRoutines() {
@@ -214,6 +244,7 @@ async function logWorkout({ routine, workoutLog, date }) {
 
 module.exports = {
   listExercises,
+  getExercise,
   listRoutines,
   listWorkoutEntries,
   saveRoutine,

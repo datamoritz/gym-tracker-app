@@ -67,5 +67,20 @@ consistent comparisons; pound entries also record their original load in Notes.
 Charts display weights in the exercise's selected unit. Exercise library Weight
 text can include `lbs` (for example `100 lbs`) to set its initial unit.
 
+## Exercise guides
+
+The info button opens an exercise guide from the workout, each planned exercise,
+or an exercise chip in the planner library. Guides use the Exercise Practices
+properties **Images** (Files & media), **Muscles Worked**, **Instructions**,
+**Common Mistakes** (Text), and **Source URL** (URL). Update these in Notion to
+update the guide; no image assets need to be copied into the app.
+
+Opening a guide refreshes its Notion page through `/api/exercises?id=PAGE_ID`
+to obtain current, unexpired image URLs. Missing fields are omitted. A saved
+library copy provides text when offline; image availability depends on the
+Notion file link. New routine entries keep `notionExerciseId` in the existing
+routine JSON, so a library rename does not break their guide. Older routines
+are matched by name, including the clarified cable raise and pushdown names.
+
 Completing a session saves the workout without requesting AI analysis. Use
 **Get AI Feedback** on the completion screen to request it; failures can be retried.

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { weightUnit, convertWeight, moveExercise, buildFeedbackWorkout } from './workout.mjs';
+import ExerciseGuide, { ExerciseInfoButton } from './ExerciseGuide.jsx';
+import { findExerciseGuide } from './exerciseGuide.mjs';
 
 const MOTIVATIONS = [
   'Stronger than yesterday.',
@@ -394,6 +396,7 @@ export default function App() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState('');
+  const [guideExercise, setGuideExercise] = useState(null);
   const timerRef = useRef(null);
   const audioCtxRef = useRef(null);
   const feedbackRequestRef = useRef(0);
@@ -592,9 +595,15 @@ export default function App() {
   async function saveRoutine() {
     setIsSaving(true);
     try {
-      let routineToSave = activeRoutine;
+      let routineToSave = {
+        ...activeRoutine,
+        exercises: activeRoutine.exercises.map(exercise => {
+          const guide = findExerciseGuide(exercise, notionExercises);
+          return guide ? { ...exercise, notionExerciseId: guide.id } : exercise;
+        })
+      };
       if (notionAvailable) {
-        routineToSave = await saveRoutineToNotion(activeRoutine);
+        routineToSave = await saveRoutineToNotion(routineToSave);
       } else {
         setNotice('Routine saved locally.');
         setNoticeTone('success');
@@ -746,6 +755,7 @@ export default function App() {
   if (view === 'planner') {
     return (
       <div className="min-h-screen bg-[#131314] pb-48">
+        {guideExercise && <ExerciseGuide exercise={guideExercise} library={notionExercises} notionAvailable={notionAvailable} onClose={() => setGuideExercise(null)} />}
         <Header title="Planner" sub="Protocol Editor" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={<button onClick={() => setShowConfirmDelete(!showConfirmDelete)} className="p-3 bg-[#28292c] rounded-full"><Icons.Trash /></button>} notionAvailable={notionAvailable} setView={setView} />
         {notice && <Notice message={notice} tone={noticeTone} />}
         <main className="p-6 space-y-6">
@@ -753,14 +763,20 @@ export default function App() {
           <input value={activeRoutine.name} onChange={event => setActiveRoutine({ ...activeRoutine, name: event.target.value })} className="text-3xl font-bold bg-transparent w-full text-white italic outline-none" />
           <p className="text-sm text-[#9e9e9e]">Use ↑ and ↓ to reorder exercises, then Save Protocol.</p>
           <div className="flex flex-wrap gap-2">
-            {[...notionExercises].sort((left, right) => (left.tag || '').localeCompare(right.tag || '')).map((exercise, index) => (
-              <button key={index} onClick={() => setActiveRoutine({ ...activeRoutine, exercises: [...activeRoutine.exercises, { id: Math.random(), name: exercise.name, defaultPause: exercise.pause, targetSets: exercise.sets, suggestedWeight: exercise.weight, targetReps: 10, weightUnit: weightUnit(exercise.weightUnit) }] })} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2 transition-all duration-100 active:scale-95 active:bg-[#8ab4f8]/20 active:border-[#8ab4f8]/50"><span className="bg-[#3c4043] px-1.5 rounded text-[8px] text-[#8ab4f8]">{exercise.tag}</span> {exercise.name}</button>
+            {[...notionExercises].sort((left, right) => (left.tag || '').localeCompare(right.tag || '')).map(exercise => (
+              <div key={exercise.id} className="exercise-library-chip">
+                <button type="button" aria-label={`Add ${exercise.name}`} onClick={() => setActiveRoutine({ ...activeRoutine, exercises: [...activeRoutine.exercises, { id: Math.random(), notionExerciseId: exercise.id, name: exercise.name, defaultPause: exercise.pause, targetSets: exercise.sets, suggestedWeight: exercise.weight, targetReps: 10, weightUnit: weightUnit(exercise.weightUnit) }] })}><span className="exercise-library-tag">{exercise.tag}</span><span>{exercise.name}</span></button>
+                <ExerciseInfoButton exercise={exercise} onClick={() => setGuideExercise(exercise)} />
+              </div>
             ))}
           </div>
           {activeRoutine.exercises.map((exercise, index) => (
             <div key={exercise.id} className="p-5 dark-card space-y-4">
-              <div className="flex justify-between items-center">
-                <input value={exercise.name} onChange={event => updateExercise(index, { name: event.target.value })} aria-label={`Exercise ${index + 1} name`} className="font-bold bg-transparent outline-none w-full min-w-0" />
+              <div className="planner-exercise-heading">
+                <div className="planner-exercise-name">
+                  <input value={exercise.name} onChange={event => updateExercise(index, { name: event.target.value })} aria-label={`Exercise ${index + 1} name`} className="font-bold bg-transparent outline-none w-full min-w-0" />
+                  <ExerciseInfoButton exercise={exercise} onClick={() => setGuideExercise(exercise)} />
+                </div>
                 <div className="flex items-center shrink-0 gap-1 ml-2">
                   <button type="button" aria-label={`Move ${exercise.name} up`} title="Move up" disabled={index === 0}
                     onClick={() => setActiveRoutine(routine => ({ ...routine, exercises: moveExercise(routine.exercises, index, -1) }))} className="reorder-button">↑</button>
@@ -810,10 +826,15 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-[#131314]">
+        {guideExercise && <ExerciseGuide exercise={guideExercise} library={notionExercises} notionAvailable={notionAvailable} onClose={() => setGuideExercise(null)} />}
         <Header title={exercise.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} setView={setView} />
         {notice && <Notice message={notice} tone={noticeTone} />}
         <div className="h-1 bg-[#28292c]"><div className="h-1 bg-[#8ab4f8] transition-all duration-300" style={{ width: `${((currentExerciseIndex + 1) / activeRoutine.exercises.length) * 100}%` }}></div></div>
         <main className="p-6 space-y-8 pb-48">
+          <button type="button" className="exercise-guide-open" aria-label={`View details for ${exercise.name}`} onClick={() => setGuideExercise(exercise)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v6" /><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none" /></svg>
+            Exercise guide
+          </button>
           <div className="flex gap-4">
             <div className="flex-1 space-y-3">
               <div className="load-card px-4 pt-6 pb-12 dark-card text-center relative bg-[#1e1f20]">

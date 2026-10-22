@@ -6,6 +6,12 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Notion-hosted image links expire; always obtain fresh links when a guide opens.
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.query?.id !== undefined) {
+      const exercise = await notionProvider.getExercise(req.query.id);
+      return res.status(200).json({ exercise });
+    }
     const exercises = await notionProvider.listExercises();
     return res.status(200).json({ exercises });
   } catch (error) {

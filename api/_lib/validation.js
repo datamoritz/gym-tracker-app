@@ -16,6 +16,8 @@ function normalizeRoutine(routine) {
     exercises: Array.isArray(routine?.exercises)
       ? routine.exercises.map(exercise => ({
           id: exercise?.id ?? Math.random(),
+          ...(typeof exercise?.notionExerciseId === 'string' && exercise.notionExerciseId.trim()
+            ? { notionExerciseId: exercise.notionExerciseId.trim() } : {}),
           name: typeof exercise?.name === 'string' && exercise.name.trim() ? exercise.name.trim() : 'Untitled Exercise',
           defaultPause: parseInteger(exercise?.defaultPause, 90),
           targetSets: parseInteger(exercise?.targetSets, 3),
