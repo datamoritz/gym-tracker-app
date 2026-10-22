@@ -97,11 +97,12 @@ async function listExercises() {
   do {
     const data = await notionRequest(`databases/${exerciseDbId}/query`, {
       body: {
-        filter: { property: 'Routine', select: { is_not_empty: true } },
         ...(cursor ? { start_cursor: cursor } : {})
       }
     });
-    exercises.push(...(data.results || []).map(mapExercisePage));
+    // Guide entries can be used as alternatives without belonging to a routine.
+    exercises.push(...(data.results || []).map(mapExercisePage).filter(exercise =>
+      exercise.tag || exercise.instructions || exercise.musclesWorked || exercise.commonMistakes || exercise.images.length));
     cursor = data.has_more ? data.next_cursor : null;
   } while (cursor);
   return exercises;

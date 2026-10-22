@@ -83,7 +83,17 @@ input::-webkit-inner-spin-button {
   outline: none;
 }
 
-.load-card { container-type: inline-size; }
+.workout-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.workout-value-column { display: grid; grid-template-rows: 164px 44px; gap: 10px; min-width: 0; }
+.workout-value-card { container-type: inline-size; display: grid; grid-template-rows: 16px minmax(0, 1fr) 32px; gap: 4px; padding: 18px 12px 14px; text-align: center; }
+.workout-value-label { color: #92969e; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
+.workout-value-input { width: 100%; min-width: 0; min-height: 0; padding: 0; background: transparent; color: #f1f2f4; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-align: center; outline: none; }
+.workout-value-unit { display: flex; align-items: center; justify-content: center; min-height: 32px; }
+.workout-reps-unit { color: #9299a4; font-size: 11px; font-weight: 500; }
+.workout-adjustments { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
+.workout-adjustments button { min-width: 0; background: #252629; color: #afb4bd; border: 1px solid #2d2f33; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.workout-adjustments button:active { color: #8ab4f8; background: #30343c; }
+.workout-adjustments button:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
 
 .weight-unit-toggle {
   display: inline-flex;
@@ -110,6 +120,10 @@ input::-webkit-inner-spin-button {
 }
 
 .weight-unit-toggle button:disabled { opacity: 0.5; }
+
+.workout-value-card .weight-unit-toggle { border: 0; padding: 0; gap: 2px; background: transparent; }
+.workout-value-card .weight-unit-toggle button { min-width: 34px; min-height: 32px; padding: 2px 7px; font-size: 11px; font-weight: 500; color: #8d939d; border-radius: 8px; }
+.workout-value-card .weight-unit-toggle button[aria-pressed="true"] { color: #b9cff0; background: #303845; }
 
 .reorder-button {
   width: 32px;

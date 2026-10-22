@@ -49,7 +49,7 @@ test('exercise guides preserve rich-text segments, uploaded and external images,
       { name: 'fly.webp', external: { url: 'https://example.com/fly.webp' } },
       { name: 'incomplete' }
     ] }
-  } }, { id: 'empty', properties: {} }] }));
+  } }, { id: 'empty', properties: { Routine: { select: { name: 'A' } } } }] }));
   const [guide, empty] = await provider.listExercises();
   assert.equal(guide.musclesWorked, 'Chest — Primary');
   assert.equal(guide.instructions, '1. Sit tall.\n2. Move slowly.');
@@ -86,8 +86,8 @@ test('opening a guide fetches a fresh page and only allows exercise database pag
 
 test('the exercise library includes later pages of Notion results', async t => {
   mockNotion(t, (url, body) => body.start_cursor
-    ? { results: [{ id: 'second', properties: {} }], has_more: false }
-    : { results: [{ id: 'first', properties: {} }], has_more: true, next_cursor: 'next' });
+    ? { results: [{ id: 'second', properties: { Instructions: { rich_text: [{ plain_text: 'Unassigned exercise guide' }] } } }], has_more: false }
+    : { results: [{ id: 'first', properties: { Routine: { select: { name: 'A' } } } }, { id: 'notes', properties: {} }], has_more: true, next_cursor: 'next' });
   assert.deepEqual((await provider.listExercises()).map(exercise => exercise.id), ['first', 'second']);
 });
 
@@ -111,7 +111,7 @@ test('mixed-unit sets use the existing kg column and preserve original pounds an
 
 test('exercise library recognizes pounds while older weights remain kilograms', async t => {
   mockNotion(t, () => ({ results: ['100 lbs', '20 kg', '7.5'].map((weight, index) => ({
-    id: String(index), properties: { Weight: { rich_text: [{ plain_text: weight }] } }
+    id: String(index), properties: { Routine: { select: { name: 'A' } }, Weight: { rich_text: [{ plain_text: weight }] } }
   })) }));
   const exercises = await provider.listExercises();
   assert.deepEqual(exercises.map(item => [item.weight, item.weightUnit]), [[100, 'lbs'], [20, 'kg'], [7.5, 'kg']]);

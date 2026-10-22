@@ -835,31 +835,31 @@ export default function App() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v6" /><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none" /></svg>
             Exercise guide
           </button>
-          <div className="flex gap-4">
-            <div className="flex-1 space-y-3">
-              <div className="load-card px-4 pt-6 pb-12 dark-card text-center relative bg-[#1e1f20]">
-                <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Load</span>
-                <input type="text" inputMode="decimal" aria-label={`Weight in ${unit}`} style={{ fontSize: `min(48px, calc(100cqw / ${Math.max(String(inputWeight).length, 4) * 0.65}))` }} value={inputWeight} onChange={event => setInputWeight(event.target.value)} className="text-4xl sm:text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
-                <div className="absolute bottom-2 left-0 right-0 flex justify-center">
+          <div className="workout-values">
+            <div className="workout-value-column">
+              <div className="workout-value-card dark-card">
+                <span className="workout-value-label">Load</span>
+                <input type="text" inputMode="decimal" aria-label={`Weight in ${unit}`} style={{ fontSize: `min(48px, calc(100cqw / ${Math.max(String(inputWeight).length, 4) * 0.65}))` }} value={inputWeight} onChange={event => setInputWeight(event.target.value)} className="workout-value-input" />
+                <div className="workout-value-unit">
                   <WeightUnitToggle value={unit} disabled={isSavingUnit} onChange={nextUnit => changeWeightUnit(currentExerciseIndex, nextUnit, true)} label={`Weight unit for ${exercise.name}`} />
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => setInputWeight(prev => Math.max(0, parseFloat(prev) - 5))} className="flex-1 py-2 bg-[#28292c] text-[#9e9e9e] rounded-xl font-black text-xs">-5</button>
-                <button onClick={() => setInputWeight(prev => Math.max(0, parseFloat(prev) - 2.5))} className="flex-1 py-2 bg-[#28292c] text-[#9e9e9e] rounded-xl font-black text-xs">-2.5</button>
-                <button onClick={() => setInputWeight(prev => parseFloat(prev) + 2.5)} className="flex-1 py-2 bg-[#28292c] text-[#9e9e9e] rounded-xl font-black text-xs">+2.5</button>
-                <button onClick={() => setInputWeight(prev => parseFloat(prev) + 5)} className="flex-1 py-2 bg-[#28292c] text-[#9e9e9e] rounded-xl font-black text-xs">+5</button>
+              <div className="workout-adjustments">
+                <button onClick={() => setInputWeight(prev => Math.max(0, parseFloat(prev) - 5))}>-5</button>
+                <button onClick={() => setInputWeight(prev => Math.max(0, parseFloat(prev) - 2.5))}>-2.5</button>
+                <button onClick={() => setInputWeight(prev => parseFloat(prev) + 2.5)}>+2.5</button>
+                <button onClick={() => setInputWeight(prev => parseFloat(prev) + 5)}>+5</button>
               </div>
             </div>
-            <div className="flex-1 space-y-3">
-              <div className="px-4 pt-6 pb-12 dark-card text-center relative bg-[#1e1f20]">
-                <span className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Reps</span>
-                <input type="number" aria-label="Reps" value={inputReps} onChange={event => setInputReps(event.target.value)} className="text-4xl sm:text-5xl font-black bg-transparent w-full text-center outline-none text-white italic" />
-                <span className="text-[10px] font-black text-[#8ab4f8] uppercase absolute bottom-3 left-0 right-0">REPS</span>
+            <div className="workout-value-column">
+              <div className="workout-value-card dark-card">
+                <span className="workout-value-label">Reps</span>
+                <input type="number" aria-label="Reps" value={inputReps} onChange={event => setInputReps(event.target.value)} style={{ fontSize: `min(48px, calc(100cqw / ${Math.max(String(inputReps).length, 4) * 0.65}))` }} className="workout-value-input" />
+                <span className="workout-value-unit workout-reps-unit">reps</span>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => setInputReps(prev => Math.max(0, parseInt(prev, 10) - 1))} className="flex-1 py-2 bg-[#28292c] text-[#9e9e9e] rounded-xl font-black text-xs">-1</button>
-                <button onClick={() => setInputReps(prev => parseInt(prev, 10) + 1)} className="flex-1 py-2 bg-[#28292c] text-[#9e9e9e] rounded-xl font-black text-xs">+1</button>
+              <div className="workout-adjustments">
+                <button onClick={() => setInputReps(prev => Math.max(0, parseInt(prev, 10) - 1))}>-1</button>
+                <button onClick={() => setInputReps(prev => parseInt(prev, 10) + 1)}>+1</button>
               </div>
             </div>
           </div>
@@ -876,9 +876,8 @@ export default function App() {
               subtitle={logged.length ? 'Live session sets are appended on the right.' : 'Weight and reps across prior sessions.'}
             />
           )}
-          <p className="text-[11px] text-[#9e9e9e]">Unit remembered for this exercise. Switching converts the current weight.</p>
           <button onClick={() => { const nextWorkoutLog = { ...workoutLog }; if (!nextWorkoutLog[exercise.id]) nextWorkoutLog[exercise.id] = []; nextWorkoutLog[exercise.id].push({ w: parseFloat(inputWeight) || 0, r: inputReps, weightUnit: unit, note: currentNote }); setWorkoutLog(nextWorkoutLog); setCurrentNote(''); startTimer(exercise.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length + 1} / {exercise.targetSets}</button>
-          <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w} {weightUnit(set.weightUnit)} × {set.r}</div>)}</div>
+          {logged.length > 0 && <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w} {weightUnit(set.weightUnit)} × {set.r}</div>)}</div>}
           <div className="space-y-1">
             <label className="text-[10px] font-black text-zinc-500 uppercase">Note for Set {logged.length + 1}</label>
             <textarea value={currentNote} onChange={event => setCurrentNote(event.target.value)} placeholder="How did it feel? Any adjustments..." rows={2} className="w-full bg-[#1e1f20] border border-[#3c4043] rounded-2xl p-4 text-sm text-[#e3e3e3] outline-none resize-none placeholder-[#3c4043] focus:border-[#8ab4f8]/40" />
