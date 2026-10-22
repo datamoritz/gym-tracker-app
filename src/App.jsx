@@ -732,7 +732,7 @@ export default function App() {
                 <p className="text-[10px] text-[#9e9e9e] font-bold uppercase">{(routine.exercises || []).length} Exercises</p>
               </div>
               <div className="flex gap-2">
-                <button aria-label={`Edit ${routine.name}`} onClick={() => { setActiveRoutine(routine); setView('planner'); }} className="p-3"><Icons.Settings /></button>
+                <button aria-label={`Edit ${routine.name}`} onClick={() => { setActiveRoutine(routine); setView('planner'); }} className="px-3 py-2 text-sm font-bold text-[#8ab4f8] rounded-xl border border-[#3c4043]">Edit</button>
                 <button aria-label={`Start ${routine.name}`} disabled={!routine.exercises?.length} onClick={() => { setActiveRoutine(routine); setCurrentExerciseIndex(0); setWorkoutLog({}); setCurrentNote(''); setAiFeedback(null); setCompletedWorkout(null); feedbackRequestRef.current += 1; setAiFeedbackLoading(false); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
               </div>
             </div>
@@ -751,6 +751,7 @@ export default function App() {
         <main className="p-6 space-y-6">
           {showConfirmDelete && <div className="p-5 bg-red-900/20 border border-red-900 rounded-2xl"><button onClick={() => { setRoutines(routines.filter(routine => routine.id !== activeRoutine.id)); setView('home'); }} className="w-full bg-red-600 py-3 rounded-xl font-bold">DELETE</button></div>}
           <input value={activeRoutine.name} onChange={event => setActiveRoutine({ ...activeRoutine, name: event.target.value })} className="text-3xl font-bold bg-transparent w-full text-white italic outline-none" />
+          <p className="text-sm text-[#9e9e9e]">Use ↑ and ↓ to reorder exercises, then Save Protocol.</p>
           <div className="flex flex-wrap gap-2">
             {[...notionExercises].sort((left, right) => (left.tag || '').localeCompare(right.tag || '')).map((exercise, index) => (
               <button key={index} onClick={() => setActiveRoutine({ ...activeRoutine, exercises: [...activeRoutine.exercises, { id: Math.random(), name: exercise.name, defaultPause: exercise.pause, targetSets: exercise.sets, suggestedWeight: exercise.weight, targetReps: 10, weightUnit: weightUnit(exercise.weightUnit) }] })} className="px-3 py-2 bg-[#1e1f20] border border-[#3c4043] rounded-xl text-[11px] font-semibold flex items-center gap-2 transition-all duration-100 active:scale-95 active:bg-[#8ab4f8]/20 active:border-[#8ab4f8]/50"><span className="bg-[#3c4043] px-1.5 rounded text-[8px] text-[#8ab4f8]">{exercise.tag}</span> {exercise.name}</button>
