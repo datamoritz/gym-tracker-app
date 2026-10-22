@@ -83,9 +83,11 @@ input::-webkit-inner-spin-button {
   outline: none;
 }
 
+.workout-main { display: flex; flex-direction: column; gap: 20px; padding: 12px 24px 160px; }
+.workout-guide-access { display: flex; justify-content: flex-end; margin-bottom: -12px; }
 .workout-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.workout-value-column { display: grid; grid-template-rows: 164px 44px; gap: 10px; min-width: 0; }
-.workout-value-card { container-type: inline-size; display: grid; grid-template-rows: 16px minmax(0, 1fr) 32px; gap: 4px; padding: 18px 12px 14px; text-align: center; }
+.workout-value-column { container-type: inline-size; display: grid; grid-template-rows: auto 44px; align-content: start; gap: 10px; min-width: 0; }
+.workout-value-card { container-type: inline-size; height: min(148px, 100cqw); display: grid; grid-template-rows: 14px minmax(0, 1fr) 32px; gap: 4px; padding: 12px 12px 10px; text-align: center; }
 .workout-value-label { color: #92969e; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
 .workout-value-input { width: 100%; min-width: 0; min-height: 0; padding: 0; background: transparent; color: #f1f2f4; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-align: center; outline: none; }
 .workout-value-unit { display: flex; align-items: center; justify-content: center; min-height: 32px; }
@@ -94,6 +96,8 @@ input::-webkit-inner-spin-button {
 .workout-adjustments button { min-width: 0; background: #252629; color: #afb4bd; border: 1px solid #2d2f33; border-radius: 12px; font-size: 12px; font-weight: 600; }
 .workout-adjustments button:active { color: #8ab4f8; background: #30343c; }
 .workout-adjustments button:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
+.workout-set-entry { display: flex; flex-direction: column; gap: 14px; }
+.workout-note { display: flex; flex-direction: column; gap: 6px; }
 
 .weight-unit-toggle {
   display: inline-flex;
@@ -153,10 +157,12 @@ input::-webkit-inner-spin-button {
 .exercise-info-button:hover,
 .exercise-guide-close:hover { background: #28292c; color: #8ab4f8; }
 
+.exercise-info-button { color: #7ef0c7; }
+.exercise-info-button:hover { color: #a1f7d9; background: rgba(126, 240, 199, .08); }
+
 .exercise-info-button:focus-visible,
 .exercise-guide button:focus-visible,
-.exercise-guide a:focus-visible,
-.exercise-guide-open:focus-visible {
+.exercise-guide a:focus-visible {
   outline: 2px solid #8ab4f8;
   outline-offset: 2px;
 }
@@ -188,20 +194,6 @@ input::-webkit-inner-spin-button {
 .planner-exercise-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .planner-exercise-name { display: flex; align-items: center; flex: 1 1 190px; min-width: 0; }
 .planner-exercise-heading > div:last-child { margin-left: auto; }
-
-.exercise-guide-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid #34363a;
-  border-radius: 14px;
-  color: #b8c8e0;
-  font-size: 13px;
-  font-weight: 500;
-  background: #1e1f20;
-}
 
 .exercise-guide {
   padding: 0;

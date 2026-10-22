@@ -830,11 +830,10 @@ export default function App() {
         <Header title={exercise.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} setView={setView} />
         {notice && <Notice message={notice} tone={noticeTone} />}
         <div className="h-1 bg-[#28292c]"><div className="h-1 bg-[#8ab4f8] transition-all duration-300" style={{ width: `${((currentExerciseIndex + 1) / activeRoutine.exercises.length) * 100}%` }}></div></div>
-        <main className="p-6 space-y-8 pb-48">
-          <button type="button" className="exercise-guide-open" aria-label={`View details for ${exercise.name}`} onClick={() => setGuideExercise(exercise)}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v6" /><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none" /></svg>
-            Exercise guide
-          </button>
+        <main className="workout-main">
+          <div className="workout-guide-access">
+            <ExerciseInfoButton exercise={exercise} onClick={() => setGuideExercise(exercise)} />
+          </div>
           <div className="workout-values">
             <div className="workout-value-column">
               <div className="workout-value-card dark-card">
@@ -876,12 +875,14 @@ export default function App() {
               subtitle={logged.length ? 'Live session sets are appended on the right.' : 'Weight and reps across prior sessions.'}
             />
           )}
-          <button onClick={() => { const nextWorkoutLog = { ...workoutLog }; if (!nextWorkoutLog[exercise.id]) nextWorkoutLog[exercise.id] = []; nextWorkoutLog[exercise.id].push({ w: parseFloat(inputWeight) || 0, r: inputReps, weightUnit: unit, note: currentNote }); setWorkoutLog(nextWorkoutLog); setCurrentNote(''); startTimer(exercise.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length + 1} / {exercise.targetSets}</button>
-          {logged.length > 0 && <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w} {weightUnit(set.weightUnit)} × {set.r}</div>)}</div>}
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-zinc-500 uppercase">Note for Set {logged.length + 1}</label>
-            <textarea value={currentNote} onChange={event => setCurrentNote(event.target.value)} placeholder="How did it feel? Any adjustments..." rows={2} className="w-full bg-[#1e1f20] border border-[#3c4043] rounded-2xl p-4 text-sm text-[#e3e3e3] outline-none resize-none placeholder-[#3c4043] focus:border-[#8ab4f8]/40" />
-          </div>
+          <section className="workout-set-entry" aria-label="Record a set">
+            <button onClick={() => { const nextWorkoutLog = { ...workoutLog }; if (!nextWorkoutLog[exercise.id]) nextWorkoutLog[exercise.id] = []; nextWorkoutLog[exercise.id].push({ w: parseFloat(inputWeight) || 0, r: inputReps, weightUnit: unit, note: currentNote }); setWorkoutLog(nextWorkoutLog); setCurrentNote(''); startTimer(exercise.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length + 1} / {exercise.targetSets}</button>
+            {logged.length > 0 && <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w} {weightUnit(set.weightUnit)} × {set.r}</div>)}</div>}
+            <div className="workout-note">
+              <label htmlFor="workout-set-note" className="text-[10px] font-black text-zinc-500 uppercase">Note for Set {logged.length + 1}</label>
+              <textarea id="workout-set-note" value={currentNote} onChange={event => setCurrentNote(event.target.value)} placeholder="How did it feel? Any adjustments..." rows={2} className="w-full bg-[#1e1f20] border border-[#3c4043] rounded-2xl p-4 text-sm text-[#e3e3e3] outline-none resize-none placeholder-[#3c4043] focus:border-[#8ab4f8]/40" />
+            </div>
+          </section>
         </main>
         {timerActive && (
           <div className="fixed bottom-[6.5rem] left-4 right-4 z-40 flex items-center gap-4 px-5 py-4 rounded-2xl shadow-2xl" style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}>
