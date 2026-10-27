@@ -56,8 +56,8 @@ The current tests cover the request/data validation helpers in `api/_lib`.
 
 Use the planner's up/down arrows to reorder exercises, then **Save Protocol**.
 Each exercise has a kg/lbs toggle in the planner and during a workout. Switching
-units converts the current load; the existing weight adjustment buttons still
-work in the selected unit. Changes during a workout are saved immediately to
+units keeps the entered number unchanged (20 kg becomes 20 lbs). Already logged
+sets retain their original unit and load. Changes during a workout are saved immediately to
 the local routine and synced to Notion. Planner changes use **Save Protocol**.
 
 No Notion schema changes are required. Order and `weightUnit` are stored in the
@@ -81,6 +81,27 @@ library copy provides text when offline; image availability depends on the
 Notion file link. New routine entries keep `notionExerciseId` in the existing
 routine JSON, so a library rename does not break their guide. Older routines
 are matched by name, including the clarified cable raise and pushdown names.
+
+## Workout recovery and gym histories
+
+An unfinished session is saved on the same phone/browser after each change.
+The overview shows an in-progress card with **Resume workout**. Back navigation,
+opening another view, editing routines, or refreshing does not clear the draft.
+It includes the routine snapshot, logged sets, per-exercise inputs and notes,
+position, and rest timer deadline. Only confirmed **Discard workout**, or a
+successful Notion finish, removes it. Failed/offline finishes keep the draft.
+Browser storage must remain available; cross-device recovery is not supported.
+
+Each routine has a Gym field stored in its existing Notion JSON. History and
+charts are separated by exercise and gym; blank legacy gyms appear as
+**Previous gym**. Loads and units remembered on the device are scoped to the
+exercise and gym. Individual machine profiles are deferred.
+
+The workout API adds missing Text properties **Gym**, **Session ID**, **Set ID**,
+and **Exercise ID** to the existing log database. Old entries are left intact.
+Stable session/set identifiers allow a failed, partially completed upload to
+skip sets that already reached Notion when retried. Weight remains canonical
+kg in the existing numeric column, with original pound loads retained in Notes.
 
 Completing a session saves the workout without requesting AI analysis. Use
 **Get AI Feedback** on the completion screen to request it; failures can be retried.

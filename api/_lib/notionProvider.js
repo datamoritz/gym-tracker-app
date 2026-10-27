@@ -27,11 +27,17 @@ function getNotionHeaders() {
 }
 
 async function notionRequest(path, { method = 'POST', body } = {}) {
-  const response = await fetch(`https://api.notion.com/v1/${String(path).replace(/^\/+/, '')}`, {
-    method,
-    headers: getNotionHeaders(),
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {})
-  });
+  let response;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    response = await fetch(`https://api.notion.com/v1/${String(path).replace(/^\/+/, '')}`, {
+      method,
+      headers: getNotionHeaders(),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {})
+    });
+    if (response.status !== 429 || attempt === 3) break;
+    const seconds = Number(response.headers?.get('retry-after')) || 1;
+    await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+  }
 
   const text = await response.text();
   let data = null;
@@ -132,10 +138,15 @@ async function listRoutines() {
 
 function mapWorkoutPage(page) {
   const properties = page.properties || {};
+  const text = name => (properties[name]?.rich_text || []).map(item => item.plain_text ?? item.text?.content ?? '').join('');
 
   return {
     id: page.id,
     exerciseName: properties.Exercise?.title?.[0]?.plain_text || 'Untitled Exercise',
+    gym: text('Gym') || 'Previous gym',
+    sessionId: text('Session ID') || null,
+    setId: text('Set ID') || null,
+    exerciseId: text('Exercise ID') || null,
     date: properties.Date?.date?.start || null,
     weight: parseNumber(properties.Weight?.number, 0),
     reps: parseInteger(properties.Reps?.number, 0),
@@ -144,9 +155,25 @@ function mapWorkoutPage(page) {
   };
 }
 
-async function listWorkoutEntries({ limit = 50, startDate = null, endDate = null } = {}) {
+async function ensureWorkoutColumns(logDbId) {
+  const database = await notionRequest(`databases/${logDbId}`, { method: 'GET' });
+  const missing = {};
+  for (const name of ['Gym', 'Session ID', 'Set ID', 'Exercise ID']) {
+    const property = database.properties?.[name];
+    if (!property) missing[name] = { rich_text: {} };
+    else if (property.type !== 'rich_text') throw new Error(`${name} must be a Text property in the workout log`);
+  }
+  if (Object.keys(missing).length) await notionRequest(`databases/${logDbId}`, { method: 'PATCH', body: { properties: missing } });
+}
+
+async function listWorkoutEntries({ limit = 50, startDate = null, endDate = null, gym = null } = {}) {
   const logDbId = requireEnv('LOG_DB_ID');
+  await ensureWorkoutColumns(logDbId);
   const filters = [];
+  if (gym) {
+    const match = { property: 'Gym', rich_text: { equals: gym } };
+    filters.push(gym === 'Previous gym' ? { or: [match, { property: 'Gym', rich_text: { is_empty: true } }] } : match);
+  }
 
   if (startDate) {
     filters.push({
@@ -162,16 +189,22 @@ async function listWorkoutEntries({ limit = 50, startDate = null, endDate = null
     });
   }
 
-  const data = await notionRequest(`databases/${logDbId}/query`, {
-    body: {
-      page_size: limit,
-      sorts: [{ property: 'Date', direction: 'descending' }],
-      ...(filters.length === 1 ? { filter: filters[0] } : {}),
-      ...(filters.length > 1 ? { filter: { and: filters } } : {})
-    }
-  });
-
-  return (data?.results || []).map(mapWorkoutPage);
+  const workouts = [];
+  let cursor;
+  do {
+    const data = await notionRequest(`databases/${logDbId}/query`, {
+      body: {
+        page_size: Math.min(100, limit - workouts.length),
+        sorts: [{ property: 'Date', direction: 'descending' }],
+        ...(cursor ? { start_cursor: cursor } : {}),
+        ...(filters.length === 1 ? { filter: filters[0] } : {}),
+        ...(filters.length > 1 ? { filter: { and: filters } } : {})
+      }
+    });
+    workouts.push(...(data.results || []).map(mapWorkoutPage));
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor && workouts.length < limit);
+  return workouts;
 }
 
 async function saveRoutine(routineInput) {
@@ -210,16 +243,34 @@ async function saveRoutine(routineInput) {
   return { ...routine, notionPageId: created.id };
 }
 
-async function logWorkout({ routine, workoutLog, date }) {
+async function logWorkout({ routine, workoutLog, date, sessionId }) {
   const logDbId = requireEnv('LOG_DB_ID');
   const normalizedRoutine = normalizeRoutine(routine);
   const normalizedLog = normalizeWorkoutLog(workoutLog);
+  await ensureWorkoutColumns(logDbId);
+  const savedSets = new Set();
+  if (sessionId) {
+    let cursor;
+    do {
+      const data = await notionRequest(`databases/${logDbId}/query`, { body: {
+        filter: { property: 'Session ID', rich_text: { equals: sessionId } },
+        ...(cursor ? { start_cursor: cursor } : {})
+      } });
+      for (const page of data.results || []) {
+        const id = page.properties?.['Set ID']?.rich_text?.map(item => item.plain_text ?? item.text?.content ?? '').join('');
+        if (id) savedSets.add(id);
+      }
+      cursor = data.has_more ? data.next_cursor : null;
+    } while (cursor);
+  }
 
   for (const [exerciseId, sets] of Object.entries(normalizedLog)) {
     const exercise = normalizedRoutine.exercises.find(item => item.id.toString() === exerciseId.toString());
     if (!exercise) continue;
 
-    for (const set of sets) {
+    for (const [index, set] of sets.entries()) {
+      const setId = set.id || (sessionId ? `${sessionId}:${exerciseId}:${index}` : null);
+      if (setId && savedSets.has(setId)) continue;
       const unit = set.weightUnit || exercise.weightUnit;
       // Keep the existing numeric Weight column in kg for comparable history.
       const weightKg = unit === 'lbs' ? set.w * 0.45359237 : set.w;
@@ -228,6 +279,10 @@ async function logWorkout({ routine, workoutLog, date }) {
         body: {
           parent: { database_id: logDbId },
           properties: {
+            Gym: { rich_text: [{ text: { content: normalizedRoutine.gym } }] },
+            ...(sessionId ? { 'Session ID': { rich_text: [{ text: { content: sessionId } }] } } : {}),
+            ...(setId ? { 'Set ID': { rich_text: [{ text: { content: setId } }] } } : {}),
+            ...(exercise.notionExerciseId ? { 'Exercise ID': { rich_text: [{ text: { content: exercise.notionExerciseId } }] } } : {}),
             Exercise: { title: [{ text: { content: exercise.name } }] },
             Date: { date: { start: date } },
             Weight: { number: weightKg },
@@ -237,6 +292,7 @@ async function logWorkout({ routine, workoutLog, date }) {
           }
         }
       });
+      if (setId) savedSets.add(setId);
     }
   }
 

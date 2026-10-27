@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const provider = require('../api/_lib/notionProvider');
+const logColumns = { properties: Object.fromEntries(['Gym', 'Session ID', 'Set ID', 'Exercise ID'].map(name => [name, { type: 'rich_text' }])) };
 
 function mockNotion(t, respond) {
   const keys = ['NOTION_API_KEY', 'ROUTINE_DB_ID', 'LOG_DB_ID', 'EXERCISE_DB_ID'];
@@ -93,7 +94,10 @@ test('the exercise library includes later pages of Notion results', async t => {
 
 test('mixed-unit sets use the existing kg column and preserve original pounds and notes', async t => {
   const writes = [];
-  mockNotion(t, (url, body) => { writes.push(body.properties); return { id: 'set' }; });
+  mockNotion(t, (url, body, options) => {
+    if (options.method === 'GET') return logColumns;
+    writes.push(body.properties); return { id: 'set' };
+  });
   await provider.logWorkout({ date: '2026-10-21', routine: { exercises: [
     { id: 'press', name: 'Chest press', weightUnit: 'lbs' },
     { id: 'legacy', name: 'Bench' }
@@ -107,6 +111,63 @@ test('mixed-unit sets use the existing kg column and preserve original pounds an
   assert.equal(writes[1].Weight.number, 50);
   assert.equal(writes[2].Weight.number, 60);
   assert.ok(writes.every(properties => !('Unit' in properties)));
+});
+
+test('gym history filters old unlabelled sets separately and paginates within Notion page limits', async t => {
+  const queries = [];
+  mockNotion(t, (url, body, options) => {
+    if (options.method === 'GET') return logColumns;
+    queries.push(body);
+    const newGym = body.filter?.rich_text?.equals === '24h Fitness Ocean';
+    if (newGym) return { results: [{ id: 'new', properties: { Gym: { rich_text: [{ plain_text: '24h Fitness Ocean' }] } } }] };
+    return body.start_cursor ? { results: [{ id: 'last', properties: {} }] }
+      : { results: Array.from({ length: 100 }, (_, index) => ({ id: String(index), properties: {} })), has_more: true, next_cursor: 'next' };
+  });
+  const previous = await provider.listWorkoutEntries({ gym: 'Previous gym', limit: 200 });
+  assert.equal(previous.length, 101);
+  assert.equal(previous[0].gym, 'Previous gym');
+  assert.deepEqual(queries[0].filter.or[1], { property: 'Gym', rich_text: { is_empty: true } });
+  assert.ok(queries.every(query => query.page_size <= 100));
+  const fresh = await provider.listWorkoutEntries({ gym: '24h Fitness Ocean' });
+  assert.deepEqual(fresh.map(row => row.id), ['new']);
+  assert.equal(fresh[0].gym, '24h Fitness Ocean');
+});
+
+test('a partial workout save can be retried without duplicating the saved sets', async t => {
+  const stored = [];
+  let shouldFail = true;
+  mockNotion(t, (url, body, options) => {
+    if (options.method === 'GET') return logColumns;
+    if (url.endsWith('/query')) return { results: stored.map(properties => ({ properties: { 'Set ID': properties['Set ID'] } })) };
+    if (stored.length === 1 && shouldFail) { shouldFail = false; throw new Error('Connection interrupted'); }
+    stored.push(body.properties); return { id: `page-${stored.length}` };
+  });
+  const payload = { date: '2026-10-26', sessionId: 'session-1', routine: {
+    name: 'A2', gym: '24h Fitness Ocean', exercises: [{ id: 'press', name: 'Chest Press', notionExerciseId: 'guide-1', weightUnit: 'kg' }]
+  }, workoutLog: { press: [{ id: 'one', w: 20, r: 10, weightUnit: 'kg' }, { id: 'two', w: 20, r: 8, weightUnit: 'lbs' }] } };
+  await assert.rejects(provider.logWorkout(payload), /Connection interrupted/);
+  assert.equal(stored.length, 1);
+  await provider.logWorkout(payload);
+  await provider.logWorkout(payload);
+  assert.equal(stored.length, 2);
+  assert.equal(stored[0].Gym.rich_text[0].text.content, '24h Fitness Ocean');
+  assert.equal(stored[1]['Set ID'].rich_text[0].text.content, 'two');
+  assert.equal(stored[0]['Session ID'].rich_text[0].text.content, 'session-1');
+  assert.equal(stored[0]['Exercise ID'].rich_text[0].text.content, 'guide-1');
+  assert.equal(stored[0].Weight.number, 20);
+  assert.ok(Math.abs(stored[1].Weight.number - 9.0718474) < 0.00001);
+});
+
+test('schema migration only adds missing workout metadata and leaves existing data alone', async t => {
+  const patches = [];
+  mockNotion(t, (url, body, options) => {
+    if (options.method === 'GET') return { properties: { Gym: { type: 'rich_text' }, Notes: { type: 'rich_text' } } };
+    if (options.method === 'PATCH') { patches.push(body); return {}; }
+    return { results: [] };
+  });
+  await provider.listWorkoutEntries({ gym: '24h Fitness Ocean' });
+  assert.deepEqual(Object.keys(patches[0].properties), ['Session ID', 'Set ID', 'Exercise ID']);
+  assert.ok(!('Notes' in patches[0].properties));
 });
 
 test('exercise library recognizes pounds while older weights remain kilograms', async t => {

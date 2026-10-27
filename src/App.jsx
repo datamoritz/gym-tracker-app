@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { weightUnit, convertWeight, moveExercise, buildFeedbackWorkout } from './workout.mjs';
 import ExerciseGuide, { ExerciseInfoButton } from './ExerciseGuide.jsx';
 import { findExerciseGuide } from './exerciseGuide.mjs';
+import { DRAFT_KEY, PREVIOUS_GYM, gymName, preferenceKey, sessionDate, readSession, saveSession, exerciseInput, changeRoutineUnit, sessionSetCount } from './session.mjs';
 
 const MOTIVATIONS = [
   'Stronger than yesterday.',
@@ -45,9 +46,9 @@ function Header({ title, sub, leftAction, rightAction, notionAvailable, setView 
       </div>
       {rightAction || (
         <div className="flex gap-2">
-          <button onClick={() => setView('analytics')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Chart /></button>
-          <button onClick={() => setView('history')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.History /></button>
-          <button onClick={() => setView('settings')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Settings /></button>
+          <button aria-label="Open analytics" onClick={() => setView('analytics')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Chart /></button>
+          <button aria-label="Open history" onClick={() => setView('history')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.History /></button>
+          <button aria-label="Open settings" onClick={() => setView('settings')} className="p-3 bg-[#28292c] text-[#9e9e9e] rounded-full"><Icons.Settings /></button>
         </div>
       )}
     </header>
@@ -77,8 +78,8 @@ function WeightUnitToggle({ value, onChange, disabled = false, label }) {
   );
 }
 
-function getExerciseUnits(routines) {
-  return Object.fromEntries(routines.flatMap(routine => (routine.exercises || [])
+function getExerciseUnits(routines, gym) {
+  return Object.fromEntries(routines.filter(routine => !gym || gymName(routine.gym) === gym).flatMap(routine => (routine.exercises || [])
     .map(exercise => [exercise.name.trim().toLowerCase(), weightUnit(exercise.weightUnit)])));
 }
 
@@ -367,6 +368,14 @@ function AnalyticsChart({ points, compact = false, subtitle = 'Each point is one
 
 export default function App() {
   const [view, setView] = useState('home');
+  const [draft, setDraft] = useState(() => readSession(localStorage));
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [sessionStartedAt, setSessionStartedAt] = useState(null);
+  const [exerciseInputs, setExerciseInputs] = useState({});
+  const [exercisePreferences, setExercisePreferences] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gym_exercise_preferences_v1') || '{}'); } catch { return {}; }
+  });
   const [routines, setRoutines] = useState(() => JSON.parse(localStorage.getItem('gym_routines') || '[]'));
   const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('gym_history') || '[]'));
   const [notionAvailable, setNotionAvailable] = useState(false);
@@ -394,12 +403,17 @@ export default function App() {
   const [noticeTone, setNoticeTone] = useState('error');
   const [analyticsWorkouts, setAnalyticsWorkouts] = useState([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
+  const [analyticsGym, setAnalyticsGym] = useState(null);
+  const [selectedGym, setSelectedGym] = useState(() => gymName(draft?.routine.gym || localStorage.getItem('gym_history_filter_v1')));
   const [selectedExercise, setSelectedExercise] = useState('');
   const [guideExercise, setGuideExercise] = useState(null);
   const timerRef = useRef(null);
   const audioCtxRef = useRef(null);
   const feedbackRequestRef = useRef(0);
+  const analyticsRequestRef = useRef(0);
+  const submittingRef = useRef(false);
+  const latestDraftRef = useRef(draft);
+  const currentAnalyticsGym = view === 'active' ? gymName(activeRoutine?.gym) : selectedGym;
 
   useEffect(() => {
     (async () => {
@@ -418,27 +432,107 @@ export default function App() {
   useEffect(() => { if (notionAvailable) { fetchExercisesFromNotion(); fetchRoutinesFromNotion(); } }, [notionAvailable]);
   useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem('gym_user_profile', JSON.stringify(userProfile)); }, [userProfile]);
+  useEffect(() => { localStorage.setItem('gym_history_filter_v1', selectedGym); }, [selectedGym]);
+  useEffect(() => { localStorage.setItem('gym_exercise_preferences_v1', JSON.stringify(exercisePreferences)); }, [exercisePreferences]);
   useEffect(() => {
-    if ((view === 'analytics' || view === 'active') && notionAvailable && !analyticsLoaded && !analyticsLoading) {
-      fetchWorkoutAnalytics();
+    if ((view === 'analytics' || view === 'active') && notionAvailable) {
+      fetchWorkoutAnalytics(currentAnalyticsGym);
     }
-  }, [view, notionAvailable, analyticsLoaded, analyticsLoading]);
+  }, [view, notionAvailable, currentAnalyticsGym]);
+
+  useLayoutEffect(() => {
+    if (view !== 'active' || !sessionId || !activeRoutine?.exercises?.length) return;
+    persistCurrentSession();
+  }, [view, sessionId, sessionStartedAt, activeRoutine, currentExerciseIndex, workoutLog, exerciseInputs, inputWeight, inputReps, currentNote, timerActive, targetEndTime]);
 
   useEffect(() => {
-    if (view === 'active' && activeRoutine && activeRoutine.exercises) {
-      if (activeRoutine.exercises.length === 0) return;
-      const exercise = activeRoutine.exercises[currentExerciseIndex];
-      if (!exercise) return;
-      const logs = workoutLog[exercise.id] || [];
-      if (logs.length > 0) {
-        setInputWeight(convertWeight(logs[logs.length - 1].w, logs[logs.length - 1].weightUnit || exercise.weightUnit, exercise.weightUnit));
-        setInputReps(logs[logs.length - 1].r);
-      } else {
-        setInputWeight(exercise.suggestedWeight || 0);
-        setInputReps(exercise.targetReps || 10);
+    const persist = () => {
+      if (latestDraftRef.current) {
+        try { saveSession(localStorage, latestDraftRef.current); } catch { /* The visible save error is handled during editing. */ }
       }
+    };
+    window.addEventListener('pagehide', persist);
+    document.addEventListener('visibilitychange', persist);
+    return () => { window.removeEventListener('pagehide', persist); document.removeEventListener('visibilitychange', persist); };
+  }, []);
+
+  function persistCurrentSession() {
+    if (!sessionId || !activeRoutine?.exercises[currentExerciseIndex]) return;
+    const snapshot = {
+      version: 1, id: sessionId, startedAt: sessionStartedAt, routine: activeRoutine,
+      currentExerciseIndex, workoutLog,
+      inputs: { ...exerciseInputs, [activeRoutine.exercises[currentExerciseIndex].id]: { weight: inputWeight, reps: inputReps, note: currentNote } },
+      targetEndTime: timerActive ? targetEndTime : null
+    };
+    latestDraftRef.current = snapshot;
+    try { saveSession(localStorage, snapshot); }
+    catch { setNotice('Could not save progress on this phone. Please keep the app open and free some storage.'); setNoticeTone('error'); }
+    setDraft(snapshot);
+  }
+
+  function resumeWorkout() {
+    if (!draft) return;
+    setConfirmDiscard(false);
+    const index = Math.min(Math.max(draft.currentExerciseIndex || 0, 0), draft.routine.exercises.length - 1);
+    const input = exerciseInput(draft.routine.exercises[index], draft.inputs, draft.workoutLog);
+    setSessionId(draft.id); setSessionStartedAt(draft.startedAt); setActiveRoutine(draft.routine);
+    setSelectedGym(gymName(draft.routine.gym));
+    setCurrentExerciseIndex(index); setWorkoutLog(draft.workoutLog); setExerciseInputs(draft.inputs || {});
+    setInputWeight(input.weight); setInputReps(input.reps); setCurrentNote(input.note || '');
+    const remaining = Math.max(0, Math.ceil(((draft.targetEndTime || 0) - Date.now()) / 1000));
+    setTimeLeft(remaining); setTimerActive(remaining > 0); setTargetEndTime(remaining ? draft.targetEndTime : null);
+    setView('active');
+  }
+
+  function startWorkout(routine) {
+    if (draft) {
+      if (draft.routine.id === routine.id) resumeWorkout();
+      else { setNotice(`Resume or discard ${draft.routine.name} before starting another routine.`); setNoticeTone('error'); }
+      return;
     }
-  }, [currentExerciseIndex, view, workoutLog]);
+    const next = prepareRoutine(routine);
+    const input = exerciseInput(next.exercises[0]);
+    setSessionId(crypto.randomUUID()); setSessionStartedAt(new Date().toISOString()); setActiveRoutine(next);
+    setSelectedGym(gymName(next.gym));
+    setCurrentExerciseIndex(0); setWorkoutLog({}); setExerciseInputs({}); setInputWeight(input.weight); setInputReps(input.reps); setCurrentNote('');
+    setTimerActive(false); setTargetEndTime(null); setAiFeedback(null); setCompletedWorkout(null);
+    feedbackRequestRef.current += 1; setAiFeedbackLoading(false); setView('active');
+  }
+
+  function prepareRoutine(routine) {
+    return { ...routine, gym: gymName(routine.gym), exercises: routine.exercises.map(exercise => {
+      const guide = findExerciseGuide(exercise, notionExercises);
+      const linked = guide ? { ...exercise, notionExerciseId: guide.id } : exercise;
+      return { ...linked, ...exercisePreferences[preferenceKey(routine, linked)] };
+    }) };
+  }
+
+  function discardWorkout() {
+    localStorage.removeItem(DRAFT_KEY); latestDraftRef.current = null; setDraft(null); setSessionId(null);
+    setConfirmDiscard(false);
+    setWorkoutLog({}); setExerciseInputs({}); setTimerActive(false); setTargetEndTime(null);
+  }
+
+  function leaveWorkout(nextView = 'home') {
+    if (isLogging) return;
+    if (nextView === 'analytics' || nextView === 'history') setSelectedGym(gymName(activeRoutine.gym));
+    persistCurrentSession(); setView(nextView);
+  }
+
+  function goToExercise(index) {
+    if (isLogging) return;
+    const inputs = { ...exerciseInputs, [activeRoutine.exercises[currentExerciseIndex].id]: { weight: inputWeight, reps: inputReps, note: currentNote } };
+    const input = exerciseInput(activeRoutine.exercises[index], inputs, workoutLog);
+    setExerciseInputs(inputs); setCurrentExerciseIndex(index); setInputWeight(input.weight); setInputReps(input.reps); setCurrentNote(input.note || '');
+  }
+
+  function logSet(exercise, unit) {
+    if (isLogging) return;
+    const set = { id: crypto.randomUUID(), w: parseFloat(inputWeight) || 0, r: parseInt(inputReps, 10) || 0, weightUnit: unit, note: currentNote };
+    setWorkoutLog(log => ({ ...log, [exercise.id]: [...(log[exercise.id] || []), set] }));
+    setExercisePreferences(previous => ({ ...previous, [preferenceKey(activeRoutine, exercise)]: { suggestedWeight: set.w, weightUnit: unit } }));
+    setCurrentNote(''); startTimer(exercise.defaultPause);
+  }
 
   async function fetchExercisesFromNotion() {
     if (!notionAvailable) return;
@@ -509,32 +603,39 @@ export default function App() {
     if (requestId === feedbackRequestRef.current) setAiFeedbackLoading(false);
   }
 
-  async function fetchWorkoutAnalytics() {
+  async function fetchWorkoutAnalytics(gym = currentAnalyticsGym) {
     if (!notionAvailable) return;
+    const request = ++analyticsRequestRef.current;
     setAnalyticsLoading(true);
     try {
-      const response = await fetch('/api/workouts?limit=200');
+      const response = await fetch(`/api/workouts?limit=200&gym=${encodeURIComponent(gym)}`);
       const data = await readJson(response);
+      if (request !== analyticsRequestRef.current) return;
       const workouts = data.workouts || [];
       setAnalyticsWorkouts(workouts);
-      const entries = buildExerciseAnalytics(workouts, getExerciseUnits(routines));
+      setAnalyticsGym(gym);
+      const entries = buildExerciseAnalytics(workouts, getExerciseUnits(routines, gym));
       if (entries.length && !entries.some(entry => entry.exerciseName === selectedExercise)) {
         setSelectedExercise(entries[0].exerciseName);
       }
       setNotice(null);
     } catch (error) {
+      if (request !== analyticsRequestRef.current) return;
+      setAnalyticsWorkouts([]); setAnalyticsGym(gym);
       setNotice(error.message || 'Could not load analytics data.');
       setNoticeTone('error');
     } finally {
-      setAnalyticsLoading(false);
-      setAnalyticsLoaded(true);
+      if (request === analyticsRequestRef.current) setAnalyticsLoading(false);
     }
   }
 
   async function pushToNotionLog() {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setIsLogging(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      persistCurrentSession();
+      const today = sessionDate(sessionStartedAt || Date.now());
       const workoutPayload = buildFeedbackWorkout(activeRoutine, workoutLog, today);
 
       if (notionAvailable) {
@@ -543,6 +644,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             routine: activeRoutine,
+            sessionId,
             workoutLog,
             date: today
           })
@@ -551,11 +653,11 @@ export default function App() {
         setNotice('Workout synced to Notion.');
         setNoticeTone('success');
       } else {
-        setNotice('Workout saved locally only.');
-        setNoticeTone('error');
+        throw new Error('Your workout is saved on this phone. Reconnect, then try finishing again.');
       }
 
-      setHistory(prev => [{ id: Date.now(), date: today, routineName: activeRoutine.name, summary: notionAvailable ? 'Synced' : 'Local' }, ...prev]);
+      setHistory(prev => [{ id: sessionId, date: today, routineName: activeRoutine.name, gym: gymName(activeRoutine.gym), summary: 'Synced' }, ...prev.filter(item => item.id !== sessionId)]);
+      localStorage.removeItem(DRAFT_KEY); latestDraftRef.current = null; setDraft(null); setSessionId(null);
       confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
       setSuccessMessage(MOTIVATIONS[Math.floor(Math.random() * MOTIVATIONS.length)]);
       setCompletedWorkout(workoutPayload);
@@ -563,12 +665,12 @@ export default function App() {
       setTimerActive(false);
       setTargetEndTime(null);
       setAnalyticsWorkouts([]);
-      setAnalyticsLoaded(false);
       setView('success');
     } catch (error) {
       setNotice(error.message || 'Could not save workout log.');
       setNoticeTone('error');
     } finally {
+      submittingRef.current = false;
       setIsLogging(false);
     }
   }
@@ -613,6 +715,7 @@ export default function App() {
         ? prev.map(routine => routine.id === routineToSave.id ? routineToSave : routine)
         : [...prev, routineToSave]
       );
+      setExercisePreferences(previous => ({ ...previous, ...Object.fromEntries(routineToSave.exercises.map(exercise => [preferenceKey(routineToSave, exercise), { suggestedWeight: exercise.suggestedWeight, weightUnit: weightUnit(exercise.weightUnit) }])) }));
       setView('home');
     } finally {
       setIsSaving(false);
@@ -630,17 +733,10 @@ export default function App() {
     const exercise = activeRoutine.exercises[index];
     const previousUnit = weightUnit(exercise.weightUnit);
     if (previousUnit === nextUnit || isSavingUnit) return;
-    const nextRoutine = {
-      ...activeRoutine,
-      exercises: activeRoutine.exercises.map((item, position) => position === index ? {
-        ...item,
-        weightUnit: nextUnit,
-        suggestedWeight: convertWeight(item.suggestedWeight, previousUnit, nextUnit)
-      } : item)
-    };
+    const nextRoutine = changeRoutineUnit(activeRoutine, index, nextUnit);
     setActiveRoutine(nextRoutine);
     if (!persist) return;
-    setInputWeight(convertWeight(inputWeight, previousUnit, nextUnit));
+    setExercisePreferences(previous => ({ ...previous, [preferenceKey(activeRoutine, exercise)]: { suggestedWeight: parseFloat(inputWeight) || 0, weightUnit: nextUnit } }));
     setRoutines(previous => previous.map(routine => routine.id === nextRoutine.id ? nextRoutine : routine));
     setIsSavingUnit(true);
     try {
@@ -734,15 +830,27 @@ export default function App() {
         <Header title="Training" sub={notionAvailable ? 'Synced' : 'Local Only'} notionAvailable={notionAvailable} setView={setView} />
         {notice && <Notice message={notice} tone={noticeTone} />}
         <main className="p-6 space-y-4 pb-32">
+          {draft && <section className="session-resume-card" aria-label="Workout in progress">
+            <div><p className="session-status">In progress</p><h2>{draft.routine.name}</h2><p>{gymName(draft.routine.gym)} · {sessionSetCount(draft)} {sessionSetCount(draft) === 1 ? 'set' : 'sets'} logged</p></div>
+            {confirmDiscard ? <>
+              <p className="session-discard-warning">Discard all unfinished sets and notes in {draft.routine.name}?</p>
+              <button type="button" className="session-resume-button" onClick={() => setConfirmDiscard(false)}>Keep workout</button>
+              <button type="button" className="session-discard-button session-discard-confirm" onClick={discardWorkout}>Discard progress</button>
+            </> : <>
+              <button type="button" className="session-resume-button" onClick={resumeWorkout}>Resume workout</button>
+              <button type="button" className="session-discard-button" onClick={() => setConfirmDiscard(true)}>Discard workout</button>
+            </>}
+          </section>}
           {routines.map(routine => (
-            <div key={routine.id} className="p-5 dark-card flex items-center justify-between">
+            <div key={routine.id} className={`p-5 dark-card flex items-center justify-between gap-3 ${draft?.routine.id === routine.id ? 'routine-in-progress' : ''}`}>
               <div className="flex-1">
                 <h3 className="text-lg font-bold">{routine.name}</h3>
                 <p className="text-[10px] text-[#9e9e9e] font-bold uppercase">{(routine.exercises || []).length} Exercises</p>
+                <p className="routine-gym">{gymName(routine.gym)}{draft?.routine.id === routine.id ? ' · In progress' : ''}</p>
               </div>
               <div className="flex gap-2">
-                <button aria-label={`Edit ${routine.name}`} onClick={() => { setActiveRoutine(routine); setView('planner'); }} className="px-3 py-2 text-sm font-bold text-[#8ab4f8] rounded-xl border border-[#3c4043]">Edit</button>
-                <button aria-label={`Start ${routine.name}`} disabled={!routine.exercises?.length} onClick={() => { setActiveRoutine(routine); setCurrentExerciseIndex(0); setWorkoutLog({}); setCurrentNote(''); setAiFeedback(null); setCompletedWorkout(null); feedbackRequestRef.current += 1; setAiFeedbackLoading(false); setView('active'); }} className="w-12 h-12 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
+                <button aria-label={`Edit ${routine.name}`} onClick={() => { setActiveRoutine(prepareRoutine(routine)); setView('planner'); }} className="px-3 py-2 text-sm font-bold text-[#8ab4f8] rounded-xl border border-[#3c4043]">Edit</button>
+                <button aria-label={`${draft?.routine.id === routine.id ? 'Resume' : 'Start'} ${routine.name}`} disabled={!routine.exercises?.length} onClick={() => startWorkout(routine)} className="w-12 h-12 shrink-0 bg-[#8ab4f8] text-black rounded-[20px] flex items-center justify-center disabled:opacity-50"><Icons.Play /></button>
               </div>
             </div>
           ))}
@@ -761,6 +869,10 @@ export default function App() {
         <main className="p-6 space-y-6">
           {showConfirmDelete && <div className="p-5 bg-red-900/20 border border-red-900 rounded-2xl"><button onClick={() => { setRoutines(routines.filter(routine => routine.id !== activeRoutine.id)); setView('home'); }} className="w-full bg-red-600 py-3 rounded-xl font-bold">DELETE</button></div>}
           <input value={activeRoutine.name} onChange={event => setActiveRoutine({ ...activeRoutine, name: event.target.value })} className="text-3xl font-bold bg-transparent w-full text-white italic outline-none" />
+          <label className="gym-field">Gym
+            <input aria-label="Gym for this routine" list="gym-options" value={activeRoutine.gym ?? PREVIOUS_GYM} onChange={event => setActiveRoutine({ ...activeRoutine, gym: event.target.value })} />
+            <datalist id="gym-options">{[...new Set([PREVIOUS_GYM, '24h Fitness Ocean', ...routines.map(routine => gymName(routine.gym))])].map(gym => <option key={gym} value={gym} />)}</datalist>
+          </label>
           <p className="text-sm text-[#9e9e9e]">Use ↑ and ↓ to reorder exercises, then Save Protocol.</p>
           <div className="flex flex-wrap gap-2">
             {[...notionExercises].sort((left, right) => (left.tag || '').localeCompare(right.tag || '')).map(exercise => (
@@ -818,7 +930,7 @@ export default function App() {
   if (view === 'active') {
     const exercise = activeRoutine.exercises[currentExerciseIndex];
     const logged = workoutLog[exercise.id] || [];
-    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts, getExerciseUnits(routines));
+    const exerciseEntries = buildExerciseAnalytics(analyticsGym === gymName(activeRoutine.gym) ? analyticsWorkouts : [], getExerciseUnits(routines, gymName(activeRoutine.gym)));
     const activeEntry = exerciseEntries.find(entry => entry.exerciseName.toLowerCase() === exercise.name.toLowerCase()) || null;
     const unit = weightUnit(exercise.weightUnit);
     const historicalPoints = (activeEntry?.points || []).map(point => ({ ...point, weight: convertWeight(point.weight, point.weightUnit, unit), weightUnit: unit }));
@@ -827,11 +939,12 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#131314]">
         {guideExercise && <ExerciseGuide exercise={guideExercise} library={notionExercises} notionAvailable={notionAvailable} onClose={() => setGuideExercise(null)} />}
-        <Header title={exercise.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} setView={setView} />
+        <Header title={exercise.name} sub={`Step ${currentExerciseIndex + 1} of ${activeRoutine.exercises.length}`} notionAvailable={notionAvailable} setView={leaveWorkout} />
         {notice && <Notice message={notice} tone={noticeTone} />}
         <div className="h-1 bg-[#28292c]"><div className="h-1 bg-[#8ab4f8] transition-all duration-300" style={{ width: `${((currentExerciseIndex + 1) / activeRoutine.exercises.length) * 100}%` }}></div></div>
         <main className="workout-main">
-          <div className="workout-guide-access">
+          <div className="workout-guide-access workout-gym-row">
+            <span className="routine-gym">{gymName(activeRoutine.gym)}</span>
             <ExerciseInfoButton exercise={exercise} onClick={() => setGuideExercise(exercise)} />
           </div>
           <div className="workout-values">
@@ -876,7 +989,7 @@ export default function App() {
             />
           )}
           <section className="workout-set-entry" aria-label="Record a set">
-            <button onClick={() => { const nextWorkoutLog = { ...workoutLog }; if (!nextWorkoutLog[exercise.id]) nextWorkoutLog[exercise.id] = []; nextWorkoutLog[exercise.id].push({ w: parseFloat(inputWeight) || 0, r: inputReps, weightUnit: unit, note: currentNote }); setWorkoutLog(nextWorkoutLog); setCurrentNote(''); startTimer(exercise.defaultPause); }} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic">Log Set {logged.length + 1} / {exercise.targetSets}</button>
+            <button disabled={isLogging} onClick={() => logSet(exercise, unit)} className="w-full py-7 bg-white text-black rounded-[28px] font-black text-xl italic disabled:opacity-50">Log Set {logged.length + 1} / {exercise.targetSets}</button>
             {logged.length > 0 && <div className="flex flex-wrap gap-2">{logged.map((set, index) => <div key={index} className="px-4 py-2 bg-[#8ab4f8]/10 text-[#8ab4f8] rounded-xl text-[10px] font-black">SET {index + 1}: {set.w} {weightUnit(set.weightUnit)} × {set.r}</div>)}</div>}
             <div className="workout-note">
               <label htmlFor="workout-set-note" className="text-[10px] font-black text-zinc-500 uppercase">Note for Set {logged.length + 1}</label>
@@ -899,8 +1012,8 @@ export default function App() {
           </div>
         )}
         <footer className="fixed bottom-0 left-0 right-0 p-6 bg-[#131314] border-t border-[#28292c] flex gap-4">
-          <button onClick={() => { setCurrentNote(''); currentExerciseIndex === 0 ? setView('home') : setCurrentExerciseIndex(index => index - 1); }} className="p-5 bg-[#28292c] rounded-2xl"><Icons.ChevronLeft /></button>
-          <button disabled={isLogging} onClick={() => { setCurrentNote(''); currentExerciseIndex === activeRoutine.exercises.length - 1 ? pushToNotionLog() : setCurrentExerciseIndex(index => index + 1); }} className="flex-1 bg-[#8ab4f8] text-black rounded-[24px] font-bold italic">{isLogging ? 'Syncing...' : (currentExerciseIndex === activeRoutine.exercises.length - 1 ? 'End Session' : 'Next Move')}</button>
+          <button aria-label={currentExerciseIndex === 0 ? 'Back to overview' : 'Previous exercise'} disabled={isLogging} onClick={() => currentExerciseIndex === 0 ? leaveWorkout() : goToExercise(currentExerciseIndex - 1)} className="p-5 bg-[#28292c] rounded-2xl"><Icons.ChevronLeft /></button>
+          <button disabled={isLogging} onClick={() => currentExerciseIndex === activeRoutine.exercises.length - 1 ? pushToNotionLog() : goToExercise(currentExerciseIndex + 1)} className="flex-1 bg-[#8ab4f8] text-black rounded-[24px] font-bold italic">{isLogging ? 'Syncing...' : (currentExerciseIndex === activeRoutine.exercises.length - 1 ? 'End Session' : 'Next Move')}</button>
         </footer>
       </div>
     );
@@ -962,7 +1075,7 @@ export default function App() {
   }
 
   if (view === 'analytics') {
-    const exerciseEntries = buildExerciseAnalytics(analyticsWorkouts, getExerciseUnits(routines));
+    const exerciseEntries = buildExerciseAnalytics(analyticsGym === selectedGym ? analyticsWorkouts : [], getExerciseUnits(routines, selectedGym));
     const activeEntry = exerciseEntries.find(entry => entry.exerciseName === selectedExercise) || exerciseEntries[0] || null;
     const latestPoint = activeEntry?.latestPoint || null;
     const previousPoint = activeEntry?.previousPoint || null;
@@ -972,9 +1085,14 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-[#131314]">
-        <Header title="Analytics" sub="Signal Layer" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={<button onClick={fetchWorkoutAnalytics} disabled={!notionAvailable || analyticsLoading} className="px-4 py-3 bg-[#28292c] text-[#9e9e9e] rounded-full text-xs font-black uppercase tracking-[0.2em] disabled:opacity-50">{analyticsLoading ? 'Syncing' : 'Refresh'}</button>} notionAvailable={notionAvailable} setView={setView} />
+        <Header title="Analytics" sub="Signal Layer" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} rightAction={<button onClick={() => fetchWorkoutAnalytics(selectedGym)} disabled={!notionAvailable || analyticsLoading} className="px-4 py-3 bg-[#28292c] text-[#9e9e9e] rounded-full text-xs font-black uppercase tracking-[0.2em] disabled:opacity-50">{analyticsLoading ? 'Syncing' : 'Refresh'}</button>} notionAvailable={notionAvailable} setView={setView} />
         {notice && <Notice message={notice} tone={noticeTone} />}
         <main className="p-6 space-y-5 pb-20">
+          <label className="gym-field">Gym history
+            <select aria-label="Gym history" value={selectedGym} onChange={event => setSelectedGym(event.target.value)}>
+              {[...new Set([PREVIOUS_GYM, '24h Fitness Ocean', ...routines.map(routine => gymName(routine.gym))])].map(gym => <option key={gym} value={gym}>{gym}</option>)}
+            </select>
+          </label>
           {!notionAvailable && (
             <div className="analytics-panel p-6 space-y-2">
               <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">Notion Required</p>
@@ -992,7 +1110,7 @@ export default function App() {
           {notionAvailable && !analyticsLoading && !exerciseEntries.length && (
             <div className="analytics-panel p-8 text-center space-y-3">
               <p className="text-[10px] uppercase tracking-[0.3em] text-[#6f747b] font-black">No Signals Yet</p>
-              <p className="text-sm text-[#9aa0a6]">Once your workout log database has entries, this view will turn them into per-exercise progress charts.</p>
+              <p className="text-sm text-[#9aa0a6]">No logged sets for {selectedGym} yet. Your other gym’s history is kept separately.</p>
             </div>
           )}
 
@@ -1071,7 +1189,15 @@ export default function App() {
       <div className="min-h-screen bg-[#131314]">
         <Header title="Vault" sub="Archives" leftAction={<button onClick={() => setView('home')} className="p-2 -ml-2"><Icons.ChevronLeft /></button>} notionAvailable={notionAvailable} setView={setView} />
         {notice && <Notice message={notice} tone={noticeTone} />}
-        <main className="p-6 space-y-4">{history.map(item => <div key={item.id} className="p-5 dark-card"><h4>{item.routineName}</h4><p className="text-[10px] text-zinc-500">{item.date}</p></div>)}</main>
+        <main className="p-6 space-y-4">
+          <label className="gym-field">Gym history
+            <select aria-label="Gym history" value={selectedGym} onChange={event => setSelectedGym(event.target.value)}>
+              {[...new Set([PREVIOUS_GYM, '24h Fitness Ocean', ...routines.map(routine => gymName(routine.gym)), ...history.map(item => gymName(item.gym))])].map(gym => <option key={gym} value={gym}>{gym}</option>)}
+            </select>
+          </label>
+          {history.filter(item => gymName(item.gym) === selectedGym).map(item => <div key={item.id} className="p-5 dark-card"><h4>{item.routineName}</h4><p className="routine-gym">{gymName(item.gym)}</p><p className="text-[10px] text-zinc-500">{item.date}</p></div>)}
+          {!history.some(item => gymName(item.gym) === selectedGym) && <p className="text-sm text-[#9aa0a6]">No completed workouts here yet.</p>}
+        </main>
       </div>
     );
   }

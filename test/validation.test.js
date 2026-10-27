@@ -75,13 +75,15 @@ test('normalizeWorkoutQuery applies defaults and bounds', () => {
   assert.deepEqual(normalizeWorkoutQuery({}), {
     limit: 50,
     startDate: null,
-    endDate: null
+    endDate: null,
+    gym: null
   });
 
   assert.deepEqual(normalizeWorkoutQuery({ limit: '999' }), {
     limit: 200,
     startDate: null,
-    endDate: null
+    endDate: null,
+    gym: null
   });
 });
 
@@ -89,14 +91,29 @@ test('assertValidWorkoutQuery validates optional date filters', () => {
   const query = assertValidWorkoutQuery({
     limit: '25',
     startDate: '2026-03-01',
-    endDate: '2026-03-31'
+    endDate: '2026-03-31',
+    gym: null
   });
 
   assert.deepEqual(query, {
     limit: 25,
     startDate: '2026-03-01',
-    endDate: '2026-03-31'
+    endDate: '2026-03-31',
+    gym: null
   });
 
   assert.throws(() => assertValidWorkoutQuery({ startDate: '03/01/2026' }), /startDate must use YYYY-MM-DD/);
+});
+
+test('gym, session and set identifiers survive normalization without changing numeric loads', () => {
+  const payload = assertValidWorkoutInput({ date: '2026-10-26', sessionId: 'workout-123',
+    routine: { name: 'A2', gym: ' 24h Fitness Ocean ', exercises: [{ id: 'press', suggestedWeight: 20, weightUnit: 'lbs' }] },
+    workoutLog: { press: [{ id: 'set-1', w: 20, r: 10, weightUnit: 'lbs' }] }
+  });
+  assert.equal(payload.routine.gym, '24h Fitness Ocean');
+  assert.equal(payload.routine.exercises[0].suggestedWeight, 20);
+  assert.equal(payload.workoutLog.press[0].id, 'set-1');
+  assert.equal(payload.sessionId, 'workout-123');
+  assert.equal(normalizeRoutine({}).gym, 'Previous gym');
+  assert.equal(assertValidWorkoutQuery({ gym: '24h Fitness Ocean' }).gym, '24h Fitness Ocean');
 });

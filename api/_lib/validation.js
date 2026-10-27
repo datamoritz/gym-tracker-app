@@ -12,6 +12,7 @@ function normalizeRoutine(routine) {
   return {
     id: routine?.id ?? Date.now(),
     name: typeof routine?.name === 'string' && routine.name.trim() ? routine.name.trim() : 'New Session',
+    gym: typeof routine?.gym === 'string' && routine.gym.trim() ? routine.gym.trim().slice(0, 100) : 'Previous gym',
     notionPageId: typeof routine?.notionPageId === 'string' && routine.notionPageId.trim() ? routine.notionPageId.trim() : null,
     exercises: Array.isArray(routine?.exercises)
       ? routine.exercises.map(exercise => ({
@@ -35,6 +36,7 @@ function normalizeWorkoutLog(workoutLog) {
       exerciseId,
       Array.isArray(sets)
         ? sets.map(set => ({
+            ...(typeof set?.id === 'string' && set.id.trim() ? { id: set.id.trim().slice(0, 120) } : {}),
             w: parseNumber(set?.w, 0),
             r: parseInteger(set?.r, 0),
             ...(set?.weightUnit === 'kg' || set?.weightUnit === 'lbs' ? { weightUnit: set.weightUnit } : {}),
@@ -78,6 +80,7 @@ function assertValidWorkoutInput(payload) {
 
   return {
     date,
+    ...(typeof payload.sessionId === 'string' && payload.sessionId.trim() ? { sessionId: payload.sessionId.trim().slice(0, 120) } : {}),
     routine: assertValidRoutineInput(payload.routine),
     workoutLog: normalizeWorkoutLog(payload.workoutLog)
   };
@@ -93,7 +96,8 @@ function normalizeWorkoutQuery(query) {
   const startDate = typeof rawStartDate === 'string' && rawStartDate.trim() ? rawStartDate.trim() : null;
   const endDate = typeof rawEndDate === 'string' && rawEndDate.trim() ? rawEndDate.trim() : null;
 
-  return { limit, startDate, endDate };
+  const gym = typeof query?.gym === 'string' && query.gym.trim() ? query.gym.trim().slice(0, 100) : null;
+  return { limit, startDate, endDate, gym };
 }
 
 function assertValidWorkoutQuery(query) {
