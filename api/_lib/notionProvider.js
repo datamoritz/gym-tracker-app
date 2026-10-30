@@ -107,8 +107,9 @@ async function listExercises() {
       }
     });
     // Guide entries can be used as alternatives without belonging to a routine.
-    exercises.push(...(data.results || []).map(mapExercisePage).filter(exercise =>
-      exercise.tag || exercise.instructions || exercise.musclesWorked || exercise.commonMistakes || exercise.images.length));
+    exercises.push(...(data.results || []).filter(page => page.properties?.['Tracker active']?.checkbox ||
+      page.properties?.Routine?.select || page.properties?.Instructions?.rich_text?.length || page.properties?.['Muscles Worked']?.rich_text?.length ||
+      page.properties?.['Common Mistakes']?.rich_text?.length || page.properties?.Images?.files?.length).map(mapExercisePage));
     cursor = data.has_more ? data.next_cursor : null;
   } while (cursor);
   return exercises;

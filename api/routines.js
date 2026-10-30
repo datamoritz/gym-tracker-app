@@ -1,7 +1,9 @@
 const notionProvider = require('./_lib/notionProvider');
 const { assertValidRoutineInput } = require('./_lib/validation');
+const { requireAccess } = require('./_lib/privateAccess');
 
 export default async function handler(req, res) {
+  if (!requireAccess(req,res)) return;
   try {
     if (req.method === 'GET') {
       const routines = await notionProvider.listRoutines();

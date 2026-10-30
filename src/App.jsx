@@ -3,6 +3,8 @@ import confetti from 'canvas-confetti';
 import { weightUnit, convertWeight, moveExercise, buildFeedbackWorkout } from './workout.mjs';
 import ExerciseGuide, { ExerciseInfoButton } from './ExerciseGuide.jsx';
 import { findExerciseGuide } from './exerciseGuide.mjs';
+import { exerciseMachines, lastEquipmentSet } from './equipment.mjs';
+import { trainingDay } from './flexible.mjs';
 import { DRAFT_KEY, PREVIOUS_GYM, gymName, preferenceKey, sessionDate, readSession, saveSession, exerciseInput, changeRoutineUnit, sessionSetCount } from './session.mjs';
 
 const MOTIVATIONS = [
@@ -407,6 +409,7 @@ export default function App() {
   const [selectedGym, setSelectedGym] = useState(() => gymName(draft?.routine.gym || localStorage.getItem('gym_history_filter_v1')));
   const [selectedExercise, setSelectedExercise] = useState('');
   const [guideExercise, setGuideExercise] = useState(null);
+  const [trainingData, setTrainingData] = useState(null);
   const timerRef = useRef(null);
   const audioCtxRef = useRef(null);
   const feedbackRequestRef = useRef(0);
@@ -430,6 +433,9 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem('gym_routines', JSON.stringify(routines)); }, [routines]);
   useEffect(() => { if (notionAvailable) { fetchExercisesFromNotion(); fetchRoutinesFromNotion(); } }, [notionAvailable]);
+  useEffect(() => {
+    if (notionAvailable) fetch('/api/training', { cache: 'no-store' }).then(response => response.json()).then(data => setTrainingData(data.state || null)).catch(() => setNotice('Could not load equipment. Reconnect before logging.'));
+  }, [notionAvailable]);
   useEffect(() => { localStorage.setItem('gym_history', JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem('gym_user_profile', JSON.stringify(userProfile)); }, [userProfile]);
   useEffect(() => { localStorage.setItem('gym_history_filter_v1', selectedGym); }, [selectedGym]);
@@ -485,6 +491,7 @@ export default function App() {
   }
 
   function startWorkout(routine) {
+    if (!trainingData) { setNotice('Wait for equipment to load, then try again.'); return; }
     if (draft) {
       if (draft.routine.id === routine.id) resumeWorkout();
       else { setNotice(`Resume or discard ${draft.routine.name} before starting another routine.`); setNoticeTone('error'); }
@@ -500,10 +507,14 @@ export default function App() {
   }
 
   function prepareRoutine(routine) {
-    return { ...routine, gym: gymName(routine.gym), exercises: routine.exercises.map(exercise => {
+    return { ...routine, gym: trainingData?.gyms.find(item => item.id === trainingData.selectedGymId)?.name || gymName(routine.gym), exercises: routine.exercises.map(exercise => {
       const guide = findExerciseGuide(exercise, notionExercises);
       const linked = guide ? { ...exercise, notionExerciseId: guide.id } : exercise;
-      return { ...linked, ...exercisePreferences[preferenceKey(routine, linked)] };
+      const catalog = trainingData?.exercises.find(item => item.id === linked.notionExerciseId || item.notionPageId === linked.notionExerciseId);
+      const equipment = catalog ? exerciseMachines(trainingData,catalog.id) : [];
+      const machine = equipment.find(item => item.id === exercise.machineId) || equipment[0];
+      const previous = machine && lastEquipmentSet(trainingData, { machineId: machine.id, exerciseId: catalog.id });
+      return { ...linked, machineId: machine?.id || '', suggestedWeight: previous?.weight ?? 0, weightUnit: previous?.unit || 'kg', targetReps: previous?.reps || linked.targetReps };
     }) };
   }
 
@@ -528,7 +539,9 @@ export default function App() {
 
   function logSet(exercise, unit) {
     if (isLogging) return;
-    const set = { id: crypto.randomUUID(), w: parseFloat(inputWeight) || 0, r: parseInt(inputReps, 10) || 0, weightUnit: unit, note: currentNote };
+    if (!exercise.machineId) { setNotice('Select linked equipment before logging.'); return; }
+    const performedAt = new Date().toISOString();
+    const set = { id: crypto.randomUUID(), machineId: exercise.machineId, performedAt, trainingDate: trainingDay(performedAt, trainingData?.timeZone), w: parseFloat(inputWeight) || 0, r: parseInt(inputReps, 10) || 0, weightUnit: unit, note: currentNote };
     setWorkoutLog(log => ({ ...log, [exercise.id]: [...(log[exercise.id] || []), set] }));
     setExercisePreferences(previous => ({ ...previous, [preferenceKey(activeRoutine, exercise)]: { suggestedWeight: set.w, weightUnit: unit } }));
     setCurrentNote(''); startTimer(exercise.defaultPause);
@@ -830,6 +843,7 @@ export default function App() {
         <Header title="Training" sub={notionAvailable ? 'Synced' : 'Local Only'} notionAvailable={notionAvailable} setView={setView} />
         {notice && <Notice message={notice} tone={noticeTone} />}
         <main className="p-6 space-y-4 pb-32">
+          <a href="/" className="session-resume-card">Next →</a>
           {draft && <section className="session-resume-card" aria-label="Workout in progress">
             <div><p className="session-status">In progress</p><h2>{draft.routine.name}</h2><p>{gymName(draft.routine.gym)} · {sessionSetCount(draft)} {sessionSetCount(draft) === 1 ? 'set' : 'sets'} logged</p></div>
             {confirmDiscard ? <>
@@ -930,11 +944,13 @@ export default function App() {
   if (view === 'active') {
     const exercise = activeRoutine.exercises[currentExerciseIndex];
     const logged = workoutLog[exercise.id] || [];
-    const exerciseEntries = buildExerciseAnalytics(analyticsGym === gymName(activeRoutine.gym) ? analyticsWorkouts : [], getExerciseUnits(routines, gymName(activeRoutine.gym)));
+    const exerciseEntries = buildExerciseAnalytics(analyticsGym === gymName(activeRoutine.gym) ? analyticsWorkouts.filter(item => item.machineId === exercise.machineId) : [], getExerciseUnits(routines, gymName(activeRoutine.gym)));
     const activeEntry = exerciseEntries.find(entry => entry.exerciseName.toLowerCase() === exercise.name.toLowerCase()) || null;
     const unit = weightUnit(exercise.weightUnit);
     const historicalPoints = (activeEntry?.points || []).map(point => ({ ...point, weight: convertWeight(point.weight, point.weightUnit, unit), weightUnit: unit }));
-    const playModePoints = mergeLiveExercisePoints(historicalPoints, logged, exercise.name, unit);
+    const playModePoints = mergeLiveExercisePoints(historicalPoints, logged.filter(item => item.machineId === exercise.machineId), exercise.name, unit);
+    const catalogExercise = trainingData?.exercises.find(item => item.id === exercise.notionExerciseId || item.notionPageId === exercise.notionExerciseId);
+    const equipmentChoices = catalogExercise ? exerciseMachines(trainingData,catalogExercise.id) : [];
 
     return (
       <div className="min-h-screen bg-[#131314]">
@@ -947,6 +963,12 @@ export default function App() {
             <span className="routine-gym">{gymName(activeRoutine.gym)}</span>
             <ExerciseInfoButton exercise={exercise} onClick={() => setGuideExercise(exercise)} />
           </div>
+          <label className="gym-field">Equipment<select value={exercise.machineId || ''} onChange={event => {
+            const machineId = event.target.value;
+            setActiveRoutine(previous => ({ ...previous, exercises: previous.exercises.map((item,index) => index === currentExerciseIndex ? { ...item, machineId } : item) }));
+            const previous = lastEquipmentSet(trainingData, { machineId, exerciseId: catalogExercise.id });
+            setInputWeight(previous ? convertWeight(previous.weight,previous.unit,unit) : 0); setInputReps(previous?.reps || exercise.targetReps || 10);
+          }}><option value="" disabled>Select equipment</option>{equipmentChoices.map(machine => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
           <div className="workout-values">
             <div className="workout-value-column">
               <div className="workout-value-card dark-card">

@@ -1,6 +1,8 @@
 const notionProvider = require('./_lib/notionProvider');
+const { requireAccess } = require('./_lib/privateAccess');
 
 export default async function handler(req, res) {
+  if (!requireAccess(req,res)) return;
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Use GET' });
   }

@@ -40,6 +40,9 @@ function normalizeWorkoutLog(workoutLog) {
             w: parseNumber(set?.w, 0),
             r: parseInteger(set?.r, 0),
             ...(set?.weightUnit === 'kg' || set?.weightUnit === 'lbs' ? { weightUnit: set.weightUnit } : {}),
+            ...(typeof set?.machineId === 'string' ? { machineId: set.machineId } : {}),
+            ...(typeof set?.performedAt === 'string' ? { performedAt: set.performedAt } : {}),
+            ...(typeof set?.trainingDate === 'string' ? { trainingDate: set.trainingDate } : {}),
             note: typeof set?.note === 'string' ? set.note.trim() : ''
           }))
         : []

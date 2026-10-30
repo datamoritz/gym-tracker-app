@@ -63,7 +63,7 @@ export default function ExerciseGuide({ exercise, library, notionAvailable, onCl
     (async () => {
       try {
         const response = await fetch(libraryItem
-          ? `/api/exercises?id=${encodeURIComponent(libraryItem.id)}` : '/api/exercises',
+          ? `/api/exercises?id=${encodeURIComponent(libraryItem.notionPageId || libraryItem.id)}` : '/api/exercises',
         { signal: controller.signal, cache: 'no-store' });
         const data = await response.json();
         if (!response.ok) throw new Error('Guide request failed');
