@@ -181,8 +181,9 @@ test('bucket suitability takes precedence over a higher numerical score', async 
   assert.ok(rankTargets(next, DAY, NOW).findIndex(row => row.target.id === lateral.target.id) < rankTargets(next, DAY, NOW).findIndex(row => row.target.id === fly.target.id));
 });
 
-test('compound ordering is a soft preference: a larger shortfall or higher priority fly can win', async () => {
-  const { state, log, row, rankTargets } = await setup();
+test('without the opening boost, overlapping compound ordering remains a soft preference', async () => {
+  const { state: initial, log, row, rankTargets } = await setup();
+  const state = { ...initial, rankingConfig: { openingCompoundBonus: 0 } };
   assert.ok(row(state, 'fly').orderingAdjustment < 0);
   assert.equal(rankTargets(state, DAY, NOW)[0].target.presetKey, 'chest');
   const priorities = { ...state, targets: state.targets.map(target => target.presetKey === 'fly' ? { ...target, priority: 3 } : target) };
@@ -196,14 +197,15 @@ test('compound ordering is a soft preference: a larger shortfall or higher prior
 
 test('alternation is only a small tie-breaker, not a mandatory sequence', async () => {
   const { state, log, rankTargets, DEFAULT_RANKING } = await setup();
-  let next = log({ ...state, rankingConfig: { ...DEFAULT_RANKING, fatiguePenaltyPerSet: 0, continuationBonus: 0, isolationPenalty: 0 } }, 'chest');
+  let next = log({ ...state, rankingConfig: { ...DEFAULT_RANKING, fatiguePenaltyPerSet: 0, continuationBonus: 0, isolationPenalty: 0, openingCompoundBonus: 0 } }, 'chest');
   assert.equal(rankTargets(next, DAY, NOW)[0].target.presetKey, 'lateral');
   next = { ...next, targets: next.targets.map(target => target.presetKey === 'chest' ? { ...target, priority: 3 } : target) };
   assert.equal(rankTargets(next, DAY, NOW)[0].target.presetKey, 'chest');
 });
 
 test('missing metadata is neutral and the best eligible exercise alternative guides each target', async () => {
-  const { state, log, row, targetFor } = await setup();
+  const { state: initial, log, row, targetFor } = await setup();
+  const state = { ...initial, rankingConfig: { openingCompoundBonus: 0 } };
   const lateral = targetFor(state, 'lateral'), chest = targetFor(state, 'chest');
   const next = log({ ...state, targets: state.targets.map(target => target.id === lateral.id ? { ...target, exerciseIds: [...target.exerciseIds, ...chest.exerciseIds] } : target) }, 'chest', 1);
   const candidate = row(next, 'lateral');

@@ -5,15 +5,19 @@ export const DEFAULT_RANKING = Object.freeze({
   fatiguePenaltyPerSet: 0.35,
   recommendedFatigueThreshold: 0.7,
   continuationBonus: 0.08,
-  isolationPenalty: 0.12
+  isolationPenalty: 0.12,
+  openingCompoundBonus: 2
 });
+
+export const OPENING_COMPOUND_GOAL = 2;
 
 export const RANKING_FIELDS = [
   ['supportingWeight', 'Supporting muscle weight', 0, 1],
   ['fatiguePenaltyPerSet', 'Fatigue penalty / set', 0, 5],
   ['recommendedFatigueThreshold', 'Recommended threshold', 0, 1],
   ['continuationBonus', 'Continue bonus', 0, 0.25],
-  ['isolationPenalty', 'Isolation ordering penalty', 0, 0.5]
+  ['isolationPenalty', 'Isolation ordering penalty', 0, 0.5],
+  ['openingCompoundBonus', 'Opening compound bonus', 0, 3]
 ];
 
 export function rankingConfig(state) {
@@ -37,7 +41,8 @@ export function saveRankingConfig(state, input) {
 
 export const NEXT_REASONS = Object.freeze({
   DUE: 'Due', CONTINUE: 'Continue', RECENT_OVERLAP: 'Recent muscle work',
-  SESSION_OVERLAP: 'Muscles worked today', FINISHED_TODAY: 'Finished today', TARGET_MET: 'Target met'
+  SESSION_OVERLAP: 'Muscles worked today', FINISHED_TODAY: 'Finished today', TARGET_MET: 'Target met',
+  OPENING_COMPOUND: 'Larger exercise first'
 });
 
 export function uniqueWorkingSets(state, day, now) {

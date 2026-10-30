@@ -2,7 +2,7 @@ import { installTrainingTargets } from './trainingTargets.mjs';
 import { installLateralExample, machineExerciseIds, exerciseMachines, byName, setMachineExercises } from './equipment.mjs';
 import { installFocusedExample, scopeItems } from './focusedExample.mjs';
 import { migrateMuscles, primaryMuscleIds } from './muscles.mjs';
-import { rankingConfig, uniqueWorkingSets, fatigueModifiers, muscleOverlap, compareRankedOptions, NEXT_REASONS } from './ranking.mjs';
+import { rankingConfig, uniqueWorkingSets, fatigueModifiers, muscleOverlap, compareRankedOptions, NEXT_REASONS, OPENING_COMPOUND_GOAL } from './ranking.mjs';
 export { prescription, weeklyPrescription } from './trainingTargets.mjs';
 export const FLEXIBLE_KEY = 'gym_flexible_preview_v1';
 export const newId = () => crypto.randomUUID();
@@ -80,10 +80,29 @@ export function targetProgress(state, target, day, now) {
     finished_today: Boolean(today && today.count >= today.requiredSets), rolling_target_met: recent.length >= target.frequency };
 }
 
+// Count actual qualifying compound work, not merely targets that offer a
+// compound alternative. Equipment alternatives and duplicate target mappings
+// of the same exercise cannot satisfy both opening slots.
+export function openingCompoundProgress(state, day, now, sets = uniqueWorkingSets(state, day, now)) {
+  const compoundIds = new Set(state.exercises.filter(exercise => exercise.type === 'compound').map(exercise => exercise.id));
+  const activityTargets = new Map(state.activities.map(activity => [activity.id, activity.targetId]));
+  const groups = state.targets.flatMap(target => {
+    const progress = targetProgress(state, target, day, now);
+    if (!progress.finished_today) return [];
+    const compoundSets = sets.filter(set => set.trainingDate === day && compoundIds.has(set.exerciseId) &&
+      setActivityIds(set).some(id => activityTargets.get(id) === target.id));
+    return compoundSets.length >= progress.requiredSets ? [new Set(compoundSets.map(set => set.exerciseId))] : [];
+  });
+  const twoDifferent = groups.some((group, index) => groups.slice(index + 1).some(other => ![...group].some(id => other.has(id))));
+  const completed = twoDifferent ? OPENING_COMPOUND_GOAL : groups.length ? 1 : 0;
+  return { completed, remaining: OPENING_COMPOUND_GOAL - completed, goal: OPENING_COMPOUND_GOAL };
+}
+
 export function rankTargets(state, day, now = new Date().toISOString()) {
   const config = rankingConfig(state);
   const sets = uniqueWorkingSets(state, day, now);
   const exerciseById = new Map(state.exercises.map(exercise => [exercise.id, exercise]));
+  const opening = openingCompoundProgress(state, day, now, sets);
   const lastSet = sets.filter(set => set.trainingDate === day).sort((a, b) => Date.parse(a.performedAt) - Date.parse(b.performedAt)).at(-1);
   const lastExercise = exerciseById.get(lastSet?.exerciseId);
   const rows = scopeItems(state, 'targets').filter(target => target.active).flatMap(target => {
@@ -99,10 +118,13 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
       const modifiers = fatigueModifiers(exercise, target, sets, day, exerciseById, config, now);
       const suitable = modifiers.fatigueModifier >= config.recommendedFatigueThreshold;
       const bucket = progress.finished_today || progress.rolling_target_met ? 'done' : suitable && !target.optional ? 'recommended' : 'other';
+      // Bucket eligibility and physiological modifiers stay unchanged. This
+      // additive preference can still be outweighed by a higher personal need.
+      const openingBonus = opening.remaining > 0 && bucket === 'recommended' && exercise.type === 'compound' ? config.openingCompoundBonus : 0;
       const alternatesPrimary = primaryMuscleIds(exercise).length > 0 && primaryMuscleIds(lastExercise).length > 0 &&
         !primaryMuscleIds(exercise).some(id => primaryMuscleIds(lastExercise).includes(id));
-      return { exercise, machines, ...modifiers, bucket, baseScore, continuationBonus, orderingAdjustment: 0,
-        score: baseScore * modifiers.fatigueModifier + continuationBonus, alternatesPrimary };
+      return { exercise, machines, ...modifiers, bucket, baseScore, continuationBonus, openingBonus, orderingAdjustment: 0,
+        score: baseScore * modifiers.fatigueModifier + continuationBonus + openingBonus, alternatesPrimary };
     });
     return [{ target, progress, exerciseOptions, shortfall, finished_today: progress.finished_today, rolling_target_met: progress.rolling_target_met }];
   });
@@ -120,6 +142,7 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
     const best = row.exerciseOptions[0];
     const reasonCodes = [];
     if (row.progress.remaining) reasonCodes.push('DUE');
+    if (best.openingBonus > 0) reasonCodes.push('OPENING_COMPOUND');
     if (row.progress.todaySets > 0 && !row.finished_today) reasonCodes.push('CONTINUE');
     if (best.recentLoad > 0) reasonCodes.push('RECENT_OVERLAP');
     if (best.todayLoad > 0) reasonCodes.push('SESSION_OVERLAP');

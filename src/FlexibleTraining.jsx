@@ -355,16 +355,17 @@ function RankingOverview({ config }) {
     <dl>
       <div><dt>1. Group</dt><dd><strong>Recommended</strong> — due, with suitable recovery.<br /><strong>Other options</strong> — due, with more muscle overlap, or optional.<br /><strong>Done</strong> — today’s sets completed or rolling target met.</dd></div>
       <div><dt>2. Score within each group</dt><dd>More weekly work remaining and higher personal priority raise the score. Overlapping working sets lower it, fading gradually over the target’s recovery window (48 hours by default). Primary muscles count more than supporting muscles.</dd></div>
-      <div><dt>3. Small adjustments</dt><dd>Unfinished sets today get a continuation boost. Isolation gets a small penalty while a suitable, due compound of equal or higher priority needs those muscles. Near-equal scores favor different primary muscles from your last exercise; further ties keep plan order.</dd></div>
+      <div><dt>3. Start with two larger exercises</dt><dd>Suitable, due compound exercises get an opening boost until two different compound targets qualify today. Core and accessories usually come later. Sets can combine across machines and sessions; two machines for one target count once. The preference resets with the training day.</dd></div>
+      <div><dt>4. Small adjustments</dt><dd>Unfinished sets today get a continuation boost. Isolation gets a small penalty while a suitable, due compound of equal or higher priority needs those muscles. Near-equal scores favor different primary muscles from your last exercise; further ties keep plan order.</dd></div>
     </dl>
     <p>Chest press before flies is a preference. A higher-scoring fly can come first. You can choose from any group; equipment stays alphabetical.</p>
     <details className="flex-details"><summary>Current calculation</summary>
-      <p className="flex-ranking-formula">Score = (remaining ÷ weekly target × priority) × fatigue factor + continue bonus − isolation penalty</p>
+      <p className="flex-ranking-formula">Score = (remaining ÷ weekly target × priority) × fatigue factor + opening bonus + continue bonus − isolation penalty</p>
       <dl>
         <div><dt>Weekly need &amp; priority</dt><dd>One of two occasions completed means ½ remains. Normal ×1, Important ×2, High ×3. At Important, that starts at 1 before the modifiers.</dd></div>
         <div><dt>Continuous recovery</dt><dd>One factor is 1 ÷ (1 + weighted sets × penalty). Each set’s contribution fades linearly from full influence when logged to zero after 48 elapsed hours by default. A target’s Recovery window can change this duration. Today’s and earlier sets combine across sessions and gyms, with each set counted once and no switch at midnight.</dd></div>
         <div><dt>Saved weights</dt><dd>Primary muscles: 1; supporting: {config.supportingWeight}. Overlap is normalized, capped at one equivalent set per logged set. Fatigue penalty: {config.fatiguePenaltyPerSet}.</dd></div>
-        <div><dt>Saved adjustments</dt><dd>Continue: +{config.continuationBonus}. Isolation: up to −{config.isolationPenalty}, scaled by overlap.</dd></div>
+        <div><dt>Saved adjustments</dt><dd>Opening compound: +{config.openingCompoundBonus}, removed after two different compound targets qualify. Continue: +{config.continuationBonus}. Isolation: up to −{config.isolationPenalty}, scaled by overlap. These are preferences; a higher-scoring accessory can still come first.</dd></div>
         <div><dt>Recommended thresholds</dt><dd>Fatigue factor ≥ {config.recommendedFatigueThreshold}. Group comes before score; optional targets stay in Other options. Scores are compared to two decimal places before the alternation tie-breaker.</dd></div>
         <div><dt>Completion &amp; fatigue</dt><dd>An occasion counts once per target per training day after its qualifying sets are completed, combining setups and sessions. Recommended sets can be higher. Partial sets affect fatigue without earning an occasion. Shared muscles alone never award another target credit. Weight and reps don’t affect ranking.</dd></div>
       </dl>

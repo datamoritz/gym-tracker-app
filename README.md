@@ -82,12 +82,14 @@ Next follows `gym filter → target status → muscle modifiers → score → bu
 ```
 score = (remaining occasions / frequency × personal priority)
         × fatigue modifier
-        + continuation bonus − isolation ordering adjustment
+        + opening compound bonus + continuation bonus − isolation ordering adjustment
 ```
 
 Primary involvement weighs 1, supporting involvement defaults to 0.35. A past set's normalized overlap is capped at one equivalent set. One fatigue modifier is `1 / (1 + weighted sets × penalty)`. Each set's influence fades linearly with elapsed hours: full influence when logged, half after 24 hours, zero at 48 hours by default. Today's and earlier sets enter this same factor once, with no handover at midnight and no calendar/DST rounding. The target editor shows the recovery duration in hours; the existing Notion `Recovery days` value remains a duration of 24-hour units for compatibility (2 = 48 hours, 1.5 = 36 hours). Zero disables fatigue penalties. Defaults: fatigue penalty 0.35, continuation bonus 0.08, isolation penalty up to 0.12. Previously saved recovery penalty/threshold values migrate to the unified settings; the separate session controls are retired. Demanding compounds are a soft preference, never a guaranteed order. Weight/reps/volume do not enter ranking.
 
 Recommended means unmet with fatigue suitability ≥0.70. Other options contains reduced-suitability or optional targets. Done means today's qualifying sets are finished or the rolling target is met. Buckets precede score. Near-equal scores favor different primary muscles from the most recent working set, then plan order. All buckets remain selectable. Equipment stays alphabetical. Settings → Ranking explains and configures the rules.
+
+Suitable, required, due compound options receive an opening bonus of **+2** until **two different compound targets** have completed their qualifying working sets in this training day. This favors larger exercises over normally prioritized untouched core/accessory targets even after one weekly occasion is already complete. Partial sets, extra sets on one target, equivalent machines, and duplicate mappings of the same compound exercise cannot fill both slots. Actual compound work must qualify; completing an isolation alternative does not count. Work combines across sessions/gyms and uses the same 04:00 Los Angeles boundary as daily credit. After the second qualifying compound target, the bonus becomes zero. Recovery buckets, weekly credit, continuation and user overrides remain intact; unusually high-priority accessories can still outscore a compound. Settings exposes the bonus (0 disables it).
 
 ## Persistence and recovery
 
