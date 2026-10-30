@@ -29,7 +29,7 @@ function GuideText({ text }) {
   ));
 }
 
-export default function ExerciseGuide({ exercise, library, notionAvailable, onClose }) {
+export default function ExerciseGuide({ exercise, library, notionAvailable, appearanceStyle, onClose }) {
   const libraryItem = findExerciseGuide(exercise, library);
   const [guide, setGuide] = useState(libraryItem);
   const [loading, setLoading] = useState(notionAvailable);
@@ -84,7 +84,7 @@ export default function ExerciseGuide({ exercise, library, notionAvailable, onCl
   const retry = () => setAttempt(value => value + 1);
 
   return createPortal(
-    <dialog ref={dialogRef} className="exercise-guide" aria-labelledby="exercise-guide-title" aria-modal="true"
+    <dialog ref={dialogRef} className={`exercise-guide${appearanceStyle ? ' training-guide' : ''}`} style={appearanceStyle} aria-labelledby="exercise-guide-title" aria-modal="true"
       onKeyDown={event => {
         if (event.key !== 'Tab') return;
         const controls = [...event.currentTarget.querySelectorAll('button:not(:disabled), a[href]')]

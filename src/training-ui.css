@@ -1,0 +1,170 @@
+/* Flexible mode presentation only. Legacy routines keep their existing styles. */
+body:has(.training-ui) { background: #0c1421; }
+.training-ui { --progress: #f6b16c; --weight-color: #91c9ff; position: relative; isolation: isolate; max-width: 520px; padding: 24px 20px calc(118px + env(safe-area-inset-bottom, 0px) + var(--menu-lift)); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.training-ui::before { content: ''; position: fixed; inset: 0; z-index: -1; background: radial-gradient(ellipse at 100% 0, color-mix(in srgb, var(--featured) 16%, transparent), transparent 55%), var(--bg); pointer-events: none; }
+.training-ui .training-icon { display: block; width: 22px; height: 22px; flex-shrink: 0; }
+.training-ui .flex-header { align-items: flex-start; gap: 12px; min-height: 50px; margin-bottom: 22px; }
+.training-ui h1 { font-size: 23px; font-weight: 650; letter-spacing: -.035em; line-height: 1.2; }
+.training-ui h2 { font-size: 20px; font-weight: 600; letter-spacing: -.025em; }
+.training-ui h3 { color: var(--ink); font-weight: 500; }
+.training-ui .flex-gym-location { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; margin-top: 7px; }
+.training-ui .flex-gym-location svg { width: 12px; height: 12px; }
+.training-ui .flex-header .flex-row-actions { gap: 5px; }
+.training-ui .flex-header select { background: var(--surface); border-color: var(--line); color: var(--ink); max-width: 150px; }
+.training-ui .flex-settings-button { color: var(--muted); background: transparent; }
+.training-ui .flex-settings-button:hover { background: var(--chip); color: var(--ink); }
+.training-ui .flex-tabs { position: fixed; z-index: 45; left: 50%; transform: translateX(-50%); bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + var(--menu-lift)); width: calc(100% - 28px); max-width: 480px; display: flex; justify-content: space-around; align-items: center; gap: 3px; margin: 0; padding: 5px; border: 1px solid var(--line); border-radius: 19px; background: var(--nav); box-shadow: 0 -5px 25px #00000012, 0 9px 30px #0002; overflow: visible; }
+.training-ui .flex-tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; flex: 1; min-width: 0; padding: 9px 4px; min-height: 53px; font-size: 10px; border: 0; border-radius: 13px; color: var(--muted); background: transparent; }
+.training-ui .flex-tabs svg { width: 20px; height: 20px; }
+.training-ui .flex-tabs button[aria-current='page'] { background: var(--selected); color: var(--accent); }
+.training-ui .flex-overview-progress { display: flex; align-items: center; gap: 13px; min-height: 28px; margin: 0 0 21px; width: 100%; padding: 0; color: var(--muted); background: transparent; text-align: left; font-size: 11px; }
+.training-ui .flex-overview-progress > span { white-space: nowrap; }
+.training-ui .flex-overview-progress strong { font-size: 16px; font-weight: 550; color: var(--progress); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.training-ui .flex-overview-progress small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.training-ui progress { appearance: none; border: 0; border-radius: 6px; overflow: hidden; background: var(--line); }
+.training-ui progress::-webkit-progress-bar { background: var(--line); border-radius: 6px; }
+.training-ui progress::-webkit-progress-value { background: var(--progress); border-radius: 6px; }
+.training-ui progress::-moz-progress-bar { background: var(--progress); border-radius: 6px; }
+.training-ui .flex-overview-progress progress { display: block; flex: 1; min-width: 0; width: auto; height: 4px; }
+.training-ui .flex-section-label { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 24px 0 12px; color: var(--muted); }
+.training-ui .flex-section-label h2 { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.training-ui .flex-section-label > span { font-size: 10px; }
+.training-ui .flex-target-card { padding: 15px 13px; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; margin-bottom: 9px; }
+.training-ui .flex-target-card .flex-card-icon { width: 27px; height: 29px; color: var(--accent); }
+.training-ui .flex-target-card h3 { font-size: 14px; line-height: 1.4; }
+.training-ui .flex-prescription, .training-ui .flex-card-dose { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.training-ui .flex-target-card > button { background: var(--chip); color: var(--accent); min-width: auto; padding-inline: 11px; font-size: 11px !important; }
+.training-ui .flex-week-count { font-size: 10px; color: var(--muted); width: auto; white-space: nowrap; flex-shrink: 0; }
+.training-ui .flex-featured-choice { min-height: 134px; padding: 18px; gap: 15px; margin-bottom: 0; background: linear-gradient(110deg, var(--featured), var(--surface)); border-color: var(--featured-line); }
+.training-ui .flex-featured-choice .flex-card-icon { width: 33px; height: 34px; }
+.training-ui .flex-featured-choice h3 { font-size: 19px; font-weight: 600; letter-spacing: -.025em; margin: 5px 0 7px; }
+.training-ui .flex-choice-label { color: var(--accent); font-size: 10px; }
+.training-ui .flex-featured-choice > button { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 43px; height: 43px; min-height: 43px; padding: 0; border-radius: 50%; background: var(--accent); color: var(--button-ink); }
+.training-ui .flex-featured-choice > button svg { width: 20px; height: 20px; }
+.training-ui .flex-featured-count { margin-top: 5px; text-align: right; }
+.training-ui .flex-recommendation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.training-ui .flex-rec-tile { display: flex; flex-direction: column; align-items: flex-start; text-align: left; padding: 14px; gap: 9px; min-width: 0; min-height: 122px; color: var(--ink); border: 1px solid var(--line); border-radius: 18px; background: var(--surface); transition: background .15s, border-color .15s; }
+.training-ui .flex-rec-tile:hover { background: var(--chip); border-color: var(--featured-line); }
+.training-ui .flex-rec-tile > svg { width: 28px; height: 28px; color: var(--accent); stroke-width: 1.35; }
+.training-ui .flex-rec-tile h3 { font-size: 13px; line-height: 1.4; flex: 1; letter-spacing: -.01em; }
+.training-ui .flex-tile-footer { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; }
+.training-ui .flex-tile-footer .flex-card-dose { font-size: 11px; }
+.training-ui .flex-tile-note { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.training-ui .flex-more-options { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 43px; width: 100%; padding: 7px; margin-top: 4px; background: transparent; color: var(--muted); font-size: 11px; }
+.training-ui .flex-more-options svg { width: 13px; height: 13px; }
+.training-ui .flex-more-options[aria-expanded='true'] svg { transform: rotate(180deg); }
+.training-ui .flex-list-row { border-color: var(--line); gap: 11px; padding: 16px 0; }
+.training-ui .flex-list-icon { width: 24px; height: 26px; color: var(--accent); }
+.training-ui .flex-list-row .flex-library-content { min-width: 0; }
+.training-ui .flex-list-row > div:first-of-type { min-width: 0; }
+.training-ui .flex-target-details > span:first-child { white-space: normal; overflow: visible; }
+.training-ui .flex-target-progress { gap: 7px; color: var(--muted); }
+.training-ui .flex-target-progress progress { height: 3px; width: 34px; background: var(--line); }
+.training-ui .flex-row-actions { gap: 5px; }
+.training-ui .flex-list-row .flex-row-actions .flex-quiet { padding-inline: 6px; font-size: 11px !important; }
+.training-ui .flex-exercise-list .flex-list-row { padding: 16px 0; min-height: 112px; gap: 12px; }
+.training-ui .flex-exercise-thumb { display: flex; align-items: center; justify-content: center; flex: 0 0 74px; width: 74px; height: 80px; border-radius: 12px; background: var(--surface); color: var(--accent); overflow: hidden; padding: 0; }
+.training-ui .flex-exercise-thumb img { width: 100%; height: 100%; object-fit: cover; background: #e6e6e8; }
+.training-ui .flex-exercise-thumb > svg { width: 30px; height: 30px; }
+.training-ui .flex-exercise-name { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.45; }
+.training-ui .flex-exercise-name > svg { width: 16px; height: 16px; color: var(--accent); }
+.training-ui .flex-exercise-list .exercise-info-button { width: 32px; min-width: 32px; height: 40px; }
+.training-ui .exercise-info-button { color: var(--muted); background: transparent; border-color: transparent; }
+.training-ui .exercise-info-button:hover { color: var(--accent); background: var(--chip); }
+.training-ui .flex-muted { color: var(--muted); }
+.training-ui .flex-panel { background: var(--surface); border-color: var(--line); border-radius: 20px; }
+.training-ui .flex-log-panel { padding: 0; background: transparent; border: 0; }
+.training-ui .flex-field { color: var(--muted); }
+.training-ui .flex-field input, .training-ui .flex-field select { background: var(--bg); color: var(--ink); border-color: var(--line); border-radius: 11px; }
+.training-ui .flex-editor fieldset { border-color: var(--line); border-radius: 12px; }
+.training-ui .flex-checks label, .training-ui .flex-check { color: var(--muted); }
+.training-ui .flex-quiet { color: var(--muted); }
+.training-ui .flex-quiet:hover { color: var(--ink); background: var(--chip); }
+.training-ui .flex-primary { background: var(--accent); color: var(--button-ink); }
+.training-ui .flex-secondary { background: var(--chip); color: var(--ink); }
+.training-ui .flex-toolbar { color: var(--muted); margin-bottom: 16px; }
+.training-ui .flex-toolbar > .flex-secondary { font-size: 11px !important; min-height: 38px; }
+.training-ui .flex-details { border-color: var(--line); }
+.training-ui .flex-details summary { color: var(--muted); }
+.training-ui .flex-options { margin: 16px 0 20px; }
+.training-ui .flex-play-top { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-bottom: 14px; }
+.training-ui .flex-play-back { display: flex; align-items: center; gap: 4px; margin-left: auto; padding: 8px; font-size: 12px !important; }
+.training-ui .flex-play-back svg { width: 16px; height: 16px; }
+.training-ui .flex-play-name { display: flex; align-items: center; gap: 11px; }
+.training-ui .flex-play-name > svg { width: 29px; height: 29px; color: var(--accent); }
+.training-ui .flex-play-name h2 { font-size: 26px; font-weight: 600; line-height: 1.25; }
+.training-ui .workout-value-card { border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.training-ui .workout-value-input { color: var(--ink); font-weight: 600; }
+.training-ui .workout-value-label, .training-ui .workout-value-unit, .training-ui .workout-reps-unit { color: var(--muted); }
+.training-ui .workout-adjustments button { background: var(--chip); color: var(--ink); border: 0; font-weight: 500; }
+.training-ui .workout-adjustments button:active { background: var(--selected); color: var(--accent); }
+.training-ui .weight-unit-toggle button { color: var(--muted); }
+.training-ui .weight-unit-toggle button[aria-pressed='true'] { background: var(--selected); color: var(--accent); }
+.training-ui .flex-log-button { background: var(--accent); color: var(--button-ink); min-height: 58px; border-radius: 16px; font-size: 17px; font-weight: 600; font-style: normal; }
+.training-ui .flex-play-actions > .flex-primary { min-height: 58px; border-radius: 16px; padding-inline: 19px; }
+.training-ui .flex-progress-chart { background: var(--surface); border-color: var(--line); border-radius: 18px; }
+.training-ui .flex-progress-chart strong { color: var(--ink); font-weight: 500; }
+.training-ui .flex-chart-date, .training-ui .flex-chart-demo { color: var(--muted); }
+.training-ui .flex-set-row { border-color: var(--line); }
+.training-ui .flex-set-row strong { color: var(--ink); }
+.training-ui .flex-set-row p { color: var(--muted); }
+.training-ui .flex-settings { gap: 22px; }
+.training-ui .flex-appearance-settings { width: 100%; border-bottom: 1px solid var(--line); padding-bottom: 22px; display: flex; flex-direction: column; gap: 12px; }
+.training-ui .flex-appearance-settings h2 { color: var(--muted); font-size: 12px; font-weight: 500; margin: 0 0 3px; }
+.training-ui .flex-theme-options { display: flex; gap: 7px; margin-bottom: 9px; }
+.training-ui .flex-theme-choice { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 45px; padding: 10px 8px; background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 13px; font-size: 11px; }
+.training-ui .flex-theme-choice[aria-pressed='true'] { color: var(--accent); background: var(--soft); border-color: var(--accent); }
+.training-ui .flex-swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background: linear-gradient(130deg, #6795c4, #14273e); }
+.training-ui .flex-swatch.burgundy { background: linear-gradient(130deg, #b8798c, #351f2b); }
+.training-ui .flex-swatch.carbon { background: linear-gradient(130deg, #8eaeb9, #020303); }
+.training-ui .flex-field .flex-range { width: 100%; min-height: 32px; padding: 0; background: transparent; border: 0; accent-color: var(--accent); }
+.training-ui .flex-range-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-top: -10px; margin-bottom: 5px; }
+.training-ui .flex-goal-editor { margin-bottom: 20px; padding: 16px; }
+.training-ui .flex-metadata, .training-ui .flex-metadata-value { color: var(--muted); }
+.training-ui .flex-pill { color: var(--accent); background: var(--soft); border-color: var(--line); }
+.training-ui .flex-pill button { color: var(--accent); }
+.training-ui .flex-assignment-heading, .training-ui .flex-assignment-results > p { color: var(--muted); }
+.training-ui .flex-assignment-picker input, .training-ui .flex-assignment-heading select, .training-ui .flex-assignment-results { background: var(--bg); border-color: var(--line); color: var(--ink); }
+.training-ui .flex-assignment-results button { color: var(--ink); }
+.training-ui .flex-assignment-results button.is-active, .training-ui .flex-assignment-results button:hover { background: var(--soft); }
+.training-ui .flex-assignment-results button[aria-selected='true'] { color: var(--accent); }
+.training-ui .flex-ranking-overview, .training-ui .flex-ranking-overview dd { color: var(--muted); }
+.training-ui .flex-ranking-overview h3, .training-ui .flex-ranking-overview dt, .training-ui .flex-ranking-overview strong { color: var(--ink); }
+.training-ui .flex-ranking-formula { color: var(--accent); background: var(--soft); border-color: var(--line); }
+.training-ui .flex-back { color: var(--accent); }
+.training-ui .flex-sync-status { position: static; display: inline-flex; margin-top: 15px; background: var(--surface); border-color: var(--line); color: var(--muted); }
+.training-ui.has-rest-timer { padding-bottom: calc(226px + env(safe-area-inset-bottom, 0px) + var(--menu-lift)); }
+.training-ui.is-playing { padding-bottom: 40px; }
+.training-ui.is-playing.has-rest-timer { padding-bottom: calc(138px + env(safe-area-inset-bottom, 0px) + var(--menu-lift)); }
+.training-ui .flex-rest-timer { max-width: 480px; bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 78px + var(--menu-lift)); width: calc(100% - 28px); padding: 15px 18px; gap: 12px; border-radius: 18px; }
+.training-ui.is-playing .flex-rest-timer { bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + var(--menu-lift)); }
+.training-ui .flex-rest-time { font-size: 36px; font-weight: 650; }
+.training-ui .flex-rest-actions button { padding-inline: 12px; font-weight: 500; }
+.training-ui.theme-carbon .flex-featured-choice, .training-ui.theme-carbon .flex-rec-tile { border-radius: 9px; }
+.training-ui.theme-carbon .flex-featured-choice { box-shadow: inset 2px 0 var(--accent); }
+.training-ui.theme-carbon .flex-tabs { border-radius: 13px; }
+.training-guide { background: var(--bg); color: var(--ink); border-color: var(--line); }
+.training-guide .exercise-guide-header { border-color: var(--line); }
+.training-guide .exercise-guide-eyebrow, .training-guide .exercise-guide-section li::marker, .training-guide .exercise-guide-muscles dd { color: var(--accent); }
+.training-guide .exercise-guide-close { color: var(--muted); background: var(--chip); }
+.training-guide .exercise-guide-status, .training-guide .exercise-guide-empty, .training-guide .exercise-guide-section p, .training-guide .exercise-guide-section li, .training-guide .exercise-guide-muscles dt { color: var(--muted); }
+.training-guide .exercise-guide-image { background: var(--surface); border-color: var(--line); }
+.training-guide .exercise-guide-image figcaption { color: var(--muted); background: var(--surface); }
+.training-guide .exercise-guide-source { color: var(--accent); border-color: var(--line); }
+@media (max-width: 520px) {
+  .training-ui { padding-top: 19px; padding-inline: 18px; }
+  .training-ui .flex-header { margin-bottom: 20px; }
+  .training-ui .flex-target-card { gap: 9px; }
+  .training-ui .flex-featured-choice { padding: 17px; gap: 13px; }
+  .training-ui .flex-exercise-list .flex-list-row { gap: 10px; }
+  .training-ui .flex-list-row .flex-row-actions { gap: 2px; }
+  .training-ui .flex-list-row .flex-row-actions .flex-quiet { padding-inline: 4px; }
+}
+@media (max-width: 370px) {
+  .training-ui { padding-inline: 12px; }
+  .training-ui .flex-rec-tile { padding: 12px; }
+  .training-ui .flex-exercise-thumb { flex-basis: 62px; width: 62px; height: 72px; }
+  .training-ui .flex-exercise-name > svg { display: none; }
+  .training-ui .flex-list-row .flex-row-actions .flex-quiet { font-size: 10px !important; }
+}
+@media (prefers-reduced-motion: reduce) { .training-ui *, .training-ui *::before, .training-ui *::after { transition: none !important; animation: none !important; } }

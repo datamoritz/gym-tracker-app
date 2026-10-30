@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FLEXIBLE_KEY, newId, trainingDay, readFlexibleState, activeSession, rankTargets, targetProgress, targetSets, sessionSets,
   startFlexibleSession, addFlexibleSet, finishFlexibleSession, saveTarget, saveExercise, saveMachine, prescription, weeklyPrescription } from './flexible.mjs';
 import './flexible.css';
+import './training-ui.css';
+import TrainingIcon, { exerciseGlyph, equipmentGlyph } from './TrainingIcon.jsx';
+import ExerciseThumbnail from './ExerciseThumbnail.jsx';
+import { THEMES, readAppearance, writeAppearance, normalizeAppearance, appearanceStyle } from './trainingAppearance.mjs';
 import WorkoutValues from './WorkoutValues.jsx';
 import EquipmentProgress from './EquipmentProgress.jsx';
 import EquipmentAssignments from './EquipmentAssignments.jsx';
@@ -82,8 +86,8 @@ function Library({ state, commit, kind, onGuide }) {
       <button className="flex-primary">Save</button>
     </form>}
     {kind === 'exercise'
-      ? <div className="flex-list">{exercises.map(exercise => <div className="flex-list-row" key={exercise.id}><div><span>{exercise.name}</span><p className="flex-muted">{exerciseMachines(state, exercise.id).length} equipment profiles</p></div><div className="flex-row-actions"><ExerciseInfoButton exercise={exercise} onClick={() => onGuide(exercise)} /><button className="flex-quiet" aria-label={`Edit exercise ${exercise.name}`} onClick={() => open('exercise', exercise)}>Edit</button></div></div>)}</div>
-      : <div className="flex-list">{scopeItems(state, 'machines').filter(machine => machine.gymId === state.selectedGymId).sort(byName).map(machine => <div className="flex-list-row" key={machine.id}><div><span>{machine.name}</span><p className="flex-muted">{machine.stations?.length || 1} {(machine.stations?.length || 1) === 1 ? 'station' : 'stations'} · {scopedMachineExercises(state, machine.id).length} {scopedMachineExercises(state, machine.id).length === 1 ? 'exercise' : 'exercises'}</p></div><button className="flex-quiet" aria-label={`Edit machine ${machine.name}`} onClick={() => open('machine', machine)}>Edit</button></div>)}</div>}
+      ? <div className="flex-list flex-exercise-list">{exercises.map(exercise => <div className="flex-list-row" key={exercise.id}><ExerciseThumbnail exercise={exercise} notionAvailable={Boolean(state.production)} onOpen={() => onGuide(exercise)} /><div className="flex-library-content"><span className="flex-exercise-name"><TrainingIcon name={exerciseGlyph(exercise)} />{exercise.name}</span><p className="flex-muted">{exerciseMachines(state, exercise.id).length} equipment profiles</p></div><div className="flex-row-actions"><ExerciseInfoButton exercise={exercise} onClick={() => onGuide(exercise)} /><button className="flex-quiet" aria-label={`Edit exercise ${exercise.name}`} onClick={() => open('exercise', exercise)}>Edit</button></div></div>)}</div>
+      : <div className="flex-list">{scopeItems(state, 'machines').filter(machine => machine.gymId === state.selectedGymId).sort(byName).map(machine => <div className="flex-list-row" key={machine.id}><TrainingIcon className="flex-list-icon" name={equipmentGlyph(machine)} /><div><span>{machine.name}</span><p className="flex-muted">{machine.stations?.length || 1} {(machine.stations?.length || 1) === 1 ? 'station' : 'stations'} · {scopedMachineExercises(state, machine.id).length} {scopedMachineExercises(state, machine.id).length === 1 ? 'exercise' : 'exercises'}</p></div><button className="flex-quiet" aria-label={`Edit machine ${machine.name}`} onClick={() => open('machine', machine)}>Edit</button></div>)}</div>}
   </>;
 }
 
@@ -107,6 +111,15 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const [restSeconds, setRestSeconds] = useState(90);
   const [guideExercise, setGuideExercise] = useState(null);
   const [deviceLink, setDeviceLink] = useState('');
+  const [appearance, setAppearance] = useState(() => { try { return readAppearance(localStorage); } catch { return readAppearance(null); } });
+  const [expandedRecommendations, setExpandedRecommendations] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalInput, setGoalInput] = useState('');
+  function updateAppearance(changes) {
+    const next = normalizeAppearance({ ...appearance, ...changes });
+    try { writeAppearance(localStorage, next); setAppearance(next); }
+    catch { setError('Could not save display preferences in this browser.'); }
+  }
 
   useEffect(() => {
     if (initialState && initialState !== stateRef.current) {
@@ -181,27 +194,42 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const previewMismatch = !state.production && session && Boolean(session.simulated) !== Boolean(testDate);
   const remainingRest = Math.max(0, Math.ceil((restUntil - now.getTime()) / 1000));
 
-  return <div className={`flex-app${remainingRest > 0 ? ' has-rest-timer' : ''}`}>
-    <header className="flex-header"><h1>Training</h1><div className="flex-row-actions">
+  // These summaries only display the existing targetProgress results. They never
+  // modify target credit, ranking, sessions, or the synchronized training state.
+  const targetSummaries = scopeItems(state, 'targets').filter(target => target.active).map(target => ({ target, progress: targetProgress(state, target, day, now.toISOString()) }));
+  const weeklyTotal = targetSummaries.reduce((total, { target }) => total + target.frequency, 0);
+  const weeklyCompleted = targetSummaries.reduce((total, { target, progress }) => total + Math.min(target.frequency, progress.occasions), 0);
+  const todayCompleted = targetSummaries.filter(({ progress }) => progress.completedToday).length;
+  const defaultDailyGoal = Math.max(1, Math.ceil(weeklyTotal / 3));
+  const dailyGoal = appearance.goalDay === day && appearance.dailyGoal ? appearance.dailyGoal : defaultDailyGoal;
+  const currentExercise = state.exercises.find(item => item.id === selectedExerciseId) || selectedRow?.exercise;
+  const isPlaying = tab === 'next' && Boolean(selectedRow);
+  const style = appearanceStyle(appearance);
+  const pageTitle = { next: 'Training', targets: 'Targets', exercises: 'Exercises', library: 'Machines', history: 'History', settings: 'Settings' }[tab];
+
+  return <div className={`flex-app training-ui theme-${appearance.theme}${isPlaying ? ' is-playing' : ''}${remainingRest > 0 ? ' has-rest-timer' : ''}`} style={style}>
+    {!isPlaying && <header className="flex-header"><div><h1>{pageTitle}</h1>{tab === 'next' && <span className="flex-gym-location"><TrainingIcon name="pin" />{labelFor(state.gyms, state.selectedGymId)}</span>}</div><div className="flex-row-actions">
       {state.gyms.length > 1 && <select aria-label="Gym" value={state.selectedGymId} disabled={Boolean(session)} onChange={event => { const id = event.target.value; commit(previous => ({ ...previous, selectedGymId: id })); setSelectedTargetId(null); }}>{state.gyms.map(gym => <option key={gym.id} value={gym.id}>{gym.name}</option>)}</select>}
-      <button type="button" className="flex-settings-button" aria-label="Settings" title="Settings" aria-current={tab === 'settings' ? 'page' : undefined} onClick={() => setTab('settings')}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-      </button>
-    </div></header>
-    <nav className="flex-tabs" aria-label="Training views">{[['next', 'Next'], ['targets', 'Targets'], ['exercises', 'Exercises'], ['library', 'Machines'], ['history', 'History']].map(([key, title]) => <button key={key} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}>{title}</button>)}</nav>
+      <button type="button" className="flex-settings-button" aria-label={tab === 'settings' ? 'Back to Training' : 'Settings'} onClick={() => setTab(tab === 'settings' ? 'next' : 'settings')}><TrainingIcon name={tab === 'settings' ? 'close' : 'settings'} /></button>
+    </div></header>}
+    {!isPlaying && <nav className="flex-tabs" aria-label="Training views">{[['next', 'Next'], ['targets', 'Targets'], ['exercises', 'Exercises'], ['library', 'Machines'], ['history', 'History']].map(([key, title]) => <button key={key} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}><TrainingIcon name={key} /><span>{title}</span></button>)}</nav>}
     {error && <div className="flex-error" role="alert">{error}<button className="flex-quiet" onClick={() => setError('')}>Dismiss</button></div>}
     {removed && <div className="flex-undo" role="status">Set removed<button className="flex-quiet" onClick={undoRemove}>Undo</button></div>}
     {testDate && <div className="flex-test-warning">Test date · {testDate}</div>}
     <main>
       {tab === 'next' && <>
+        {!selectedRow && <>
+          <button className="flex-overview-progress flex-today-progress" aria-label={`Today: ${todayCompleted} of ${dailyGoal} target occasions. Adjust daily goal`} aria-expanded={editingGoal} onClick={() => { setGoalInput(String(dailyGoal)); setEditingGoal(value => !value); }}><span>Today</span><progress value={Math.min(todayCompleted, dailyGoal)} max={dailyGoal} aria-label="Today's target progress" /><strong>{todayCompleted}<small>/{dailyGoal}</small></strong></button>
+          {editingGoal && <form className="flex-panel flex-goal-editor" onSubmit={event => { event.preventDefault(); updateAppearance({ goalDay: day, dailyGoal: Number(goalInput) }); setEditingGoal(false); }}><Field label="Today's goal"><input type="number" min="1" max="100" required value={goalInput} onChange={event => setGoalInput(event.target.value)} /></Field><p className="flex-muted">Default: {defaultDailyGoal} · one third of the weekly target, rounded up.</p><div className="flex-actions"><button className="flex-primary">Save</button><button type="button" className="flex-quiet" onClick={() => { updateAppearance({ goalDay: '', dailyGoal: null }); setEditingGoal(false); }}>Use default</button><button type="button" className="flex-quiet" onClick={() => setEditingGoal(false)}>Cancel</button></div></form>}
+        </>}
         {session && <div className="flex-toolbar"><span>{currentWorkingSets} {currentWorkingSets === 1 ? 'set' : 'sets'}</span><button className="flex-secondary" onClick={() => { if (commit(previous => finishFlexibleSession(previous))) { setSelectedTargetId(null); setRestUntil(0); } }}>Finish</button></div>}
         {previewMismatch && <p className="flex-error">Finish this session before changing the date.</p>}
         {selectedRow ? <section className="flex-panel flex-log-panel">
-          <div className="flex-row"><h2>{selectedRow.target.name}</h2><div className="flex-row-actions"><ExerciseInfoButton exercise={state.exercises.find(item => item.id === selectedExerciseId) || selectedRow.exercise} onClick={() => setGuideExercise(state.exercises.find(item => item.id === selectedExerciseId) || selectedRow.exercise)} /><button className="flex-quiet" onClick={() => setSelectedTargetId(null)}>Back</button></div></div>
+          <div className="flex-play-top"><button className="flex-quiet flex-play-back" onClick={() => setSelectedTargetId(null)}><TrainingIcon name="back" />Back</button><ExerciseInfoButton exercise={currentExercise} onClick={() => setGuideExercise(currentExercise)} /></div><div className="flex-play-name"><TrainingIcon name={exerciseGlyph(currentExercise)} /><h2>{currentExercise?.name || selectedRow.target.name}</h2></div>
           <p className="flex-prescription">{prescription(selectedRow.progress.prescription)} · {selectedRow.progress.todaySets}/{selectedRow.progress.prescription.recommendedSets || selectedRow.progress.requiredSets} sets{selectedRow.progress.prescription.recommendedSets > selectedRow.progress.requiredSets ? ` · ${selectedRow.progress.requiredSets} to qualify` : ''}</p>
           {selectedRow.target.guidance && <p className="flex-muted">{selectedRow.target.guidance}</p>}
           {selectedRow.exercises.length > 1 && <Field label="Exercise"><select value={selectedExerciseId} onChange={event => chooseExercise(event.target.value, selectedRow.progress.prescription)}>{selectedRow.exercises.map(exercise => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}</select></Field>}
-          <div className="flex-options" role="group" aria-label="Equipment">{selectedMachines.map(machine => <div key={machine.id} className={`flex-option ${machineId === machine.id ? 'is-selected' : ''}`}><button className="flex-option-select" aria-pressed={machineId === machine.id} onClick={() => chooseMachine(machine.id, selectedRow.progress.prescription)}>{machine.name}{machine.stations?.length > 1 && <span className="flex-station-count">{machine.stations.length} stations</span>}</button></div>)}</div>
+          <div className="flex-options"><Field label="Equipment"><select value={machineId} onChange={event => chooseMachine(event.target.value, selectedRow.progress.prescription)}>{selectedMachines.map(machine => <option key={machine.id} value={machine.id}>{machine.name}{machine.stations?.length > 1 ? ` · ${machine.stations.length} stations` : ''}</option>)}</select></Field></div>
           {!selectedMachines.length && <p className="flex-muted">No machine linked.</p>}
           {selectedMachine && <form onSubmit={event => {
             event.preventDefault(); if (previewMismatch) return;
@@ -220,7 +248,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           {selectedSets.length > 0 && <div className="flex-set-list">{selectedSets.map(set => <SetRow key={set.id} set={set} state={state} onRemove={removeSet} />)}</div>}
           {machineHistory.length > 0 && <details className="flex-details"><summary>History</summary>{[...machineHistory].reverse().slice(0, 12).map(set => <SetRow key={set.id} set={set} state={state} date />)}</details>}
         </section> : <>
-          {choices.length > 0 && <section aria-label="Recommended"><h2 className="flex-bucket-heading">Recommended</h2><div className="flex-target-list">{choices.map(row => <TargetCard key={row.target.id} row={row} onChoose={() => openTarget(row)} />)}</div></section>}
+          {choices.length > 0 && <section aria-label="Recommended"><TargetCard row={choices[0]} featured onChoose={() => openTarget(choices[0])} />{choices.length > 1 && <><div className="flex-section-label"><h2>Also recommended</h2><span>{choices.length - 1} options</span></div><div className="flex-recommendation-grid" id="next-recommendations">{choices.slice(1, expandedRecommendations ? undefined : 7).map(row => <TargetCard key={row.target.id} row={row} tile onChoose={() => openTarget(row)} />)}</div>{choices.length > 7 && <button className="flex-more-options" aria-expanded={expandedRecommendations} aria-controls="next-recommendations" onClick={() => setExpandedRecommendations(value => !value)}>{expandedRecommendations ? 'Show fewer' : `${choices.length - 7} more options`}<TrainingIcon name="down" /></button>}</>}</section>}
           {!rows.length && <p className="flex-empty">No linked exercises at this gym.</p>}
           {!choices.length && !otherOptions.length && done.length > 0 && <p className="flex-empty">Done for today.</p>}
         </>}
@@ -228,11 +256,12 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
         {done.length > 0 && !selectedRow && <details className="flex-details"><summary>Done ({done.length})</summary>{done.map(row => <TargetCard key={row.target.id} row={row} onChoose={() => openTarget(row)} />)}</details>}
       </>}
       {tab === 'targets' && <>
+        <div className="flex-overview-progress"><span>Rolling 7 days</span><progress value={weeklyCompleted} max={weeklyTotal || 1} aria-label="Weekly target progress" /><strong>{weeklyCompleted}<small>/{weeklyTotal}</small></strong></div>
         {!state.testingScope && <div className="flex-toolbar"><span /><button className="flex-secondary" onClick={() => setEditingTarget(null)}>+ Target</button></div>}
         {editingTarget !== undefined && <TargetEditor key={editingTarget?.id || 'new'} state={state} target={editingTarget} onClose={() => setEditingTarget(undefined)} onSave={form => { if (commit(previous => saveTarget(previous, form))) setEditingTarget(undefined); }} />}
         <div className="flex-list">{scopeItems(state, 'targets').map(target => {
           const completed = Math.min(targetProgress(state, target, day, now.toISOString()).occasions, target.frequency);
-          return <div key={target.id} className="flex-list-row"><div><h3>{target.name}{target.optional ? ' · Optional' : ''}{!target.active ? ' · Paused' : ''}</h3><p className="flex-muted flex-target-details"><span>{target.frequency}× / 7d · {weeklyPrescription(target)}</span></p></div>
+          return <div key={target.id} className="flex-list-row"><TrainingIcon className="flex-list-icon" name={exerciseGlyph(state.exercises.find(exercise => target.exerciseIds.includes(exercise.id)) || target)} /><div><h3>{target.name}{target.optional ? ' · Optional' : ''}{!target.active ? ' · Paused' : ''}</h3><p className="flex-muted flex-target-details"><span>{target.frequency}× / 7d · {weeklyPrescription(target)}</span></p></div>
             <div className="flex-row-actions"><span className="flex-target-progress"><progress value={completed} max={target.frequency} aria-label={`${target.name} progress in the last 7 days`} aria-valuetext={`${completed} of ${target.frequency} training days completed`} /><span aria-hidden="true">{completed}/{target.frequency}</span></span>
               <button className="flex-quiet" aria-label={`Edit target ${target.name}`} onClick={() => setEditingTarget(target)}>Edit</button></div>
           </div>;
@@ -248,6 +277,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
         {[...state.sessions].reverse().map(item => { const sets = sessionSets(state, item.id).filter(set => set.machineId === historyMachine?.id && set.exerciseId === historyExercise?.id); if (!sets.length) return null; return <section className="flex-panel" key={item.id}><div className="flex-row"><h3>{item.trainingDate}</h3><span className="flex-muted">{sets.length} sets{!item.endedAt ? ' · Active' : ''}{item.simulated ? ' · Test' : ''}</span></div>{sets.map(set => <SetRow key={set.id} set={set} state={state} onRemove={removeSet} />)}</section>; })}
       </>}
       {tab === 'settings' && <div className="flex-settings">
+        <AppearanceSettings appearance={appearance} onChange={updateAppearance} />
         {state.gyms.map(gym => <GymName key={gym.id} gym={gym} commit={commit} />)}
         {!state.production && <button className="flex-secondary" onClick={() => commit(previous => ({ ...previous, gyms: [...previous.gyms, { id: newId(), name: `Gym ${previous.gyms.length + 1}` }] }))}>+ Gym</button>}
         <button className="flex-secondary" onClick={() => download(state.production ? localStorage.getItem('fitness_notion_v1') || JSON.stringify(state) : JSON.stringify(state, null, 2))}>Export data</button>
@@ -266,7 +296,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
       </div>}
     </main>
     {state.production && syncStatus !== 'Saved' && <div className="flex-sync-status" role="status">{syncStatus}{syncError && <button className="flex-quiet" onClick={onSync}>Retry</button>}</div>}
-    {guideExercise && <ExerciseGuide exercise={guideExercise} library={state.exercises} notionAvailable={Boolean(state.production)} onClose={() => setGuideExercise(null)} />}
+    {guideExercise && <ExerciseGuide exercise={guideExercise} library={state.exercises} notionAvailable={Boolean(state.production)} appearanceStyle={style} onClose={() => setGuideExercise(null)} />}
     {remainingRest > 0 && <aside className="flex-rest-timer" aria-label="Rest timer">
       <div><span className="flex-rest-label">Rest</span><span className="flex-rest-time" role="timer">{Math.floor(remainingRest / 60)}:{String(remainingRest % 60).padStart(2, '0')}</span></div>
       <div className="flex-rest-actions"><button type="button" aria-label="Reduce rest by 15 seconds" onClick={() => updateRest(Math.max(Date.now() + 500, restUntil - 15000))}>-15s</button><button type="button" className="flex-rest-skip" onClick={() => updateRest(0)}>Skip</button></div>
@@ -274,12 +304,24 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   </div>;
 }
 
-function TargetCard({ row, onChoose }) {
+function TargetCard({ row, onChoose, featured = false, tile = false }) {
   const { target, progress } = row;
   const status = row.finished_today ? NEXT_REASONS.FINISHED_TODAY : row.rolling_target_met ? NEXT_REASONS.TARGET_MET
     : row.reasonCodes.includes('RECENT_OVERLAP') ? NEXT_REASONS.RECENT_OVERLAP
     : row.reasonCodes.includes('SESSION_OVERLAP') ? NEXT_REASONS.SESSION_OVERLAP : row.deferred ? 'Better later' : target.optional ? 'Optional' : '';
-  return <article className="flex-target-card" aria-label={target.name}><div className="flex-target-content"><h3>{target.name}</h3><p className="flex-prescription">{prescription(progress.prescription)}{progress.todaySets > 0 ? ` · ${progress.todaySets}/${progress.prescription.recommendedSets || progress.requiredSets} sets` : ''}{status ? ` · ${status}` : ''}</p></div><span className="flex-week-count" aria-label={`${progress.occasions} of ${target.frequency} training days in 7 days`}>{progress.occasions}/{target.frequency}</span><button className="flex-secondary" onClick={onChoose}>{row.finished_today || row.rolling_target_met ? 'Open' : progress.todaySets ? 'Continue' : 'Start'}</button></article>;
+  const action = row.finished_today || row.rolling_target_met ? 'Open' : progress.todaySets ? 'Continue' : 'Start';
+  const count = <span className="flex-week-count" aria-label={`${progress.occasions} of ${target.frequency} training days in 7 days`}>{progress.occasions}/{target.frequency}</span>;
+  const detail = <span className="flex-card-dose">{prescription(progress.prescription)}</span>;
+  const note = `${progress.todaySets > 0 ? `${progress.todaySets}/${progress.prescription.recommendedSets || progress.requiredSets} sets` : ''}${status ? `${progress.todaySets > 0 ? ' · ' : ''}${status}` : ''}`;
+  if (tile) return <button type="button" className="flex-rec-tile" aria-label={`${action} ${target.name}${note ? ` · ${note}` : ''}`} onClick={onChoose}><TrainingIcon name={exerciseGlyph(row.exercise)} /><h3>{target.name}</h3>{note && <span className="flex-tile-note">{note}</span>}<span className="flex-tile-footer">{detail}{count}</span></button>;
+  return <article className={`flex-target-card${featured ? ' flex-featured-choice' : ''}`} aria-label={target.name}><TrainingIcon className="flex-card-icon" name={exerciseGlyph(row.exercise)} /><div className="flex-target-content">{featured && <span className="flex-choice-label">{progress.todaySets && !row.finished_today ? 'Continue' : 'Good next choice'}</span>}<h3>{target.name}</h3><p className="flex-prescription">{detail}{note && <span> · {note}</span>}</p>{featured && <div className="flex-featured-count">{count}</div>}</div>{!featured && count}<button className="flex-secondary" aria-label={`${action} ${target.name}`} onClick={onChoose}>{featured ? <TrainingIcon name="arrow" /> : action}</button></article>;
+}
+
+function AppearanceSettings({ appearance, onChange }) {
+  return <section className="flex-appearance-settings" aria-label="Appearance"><h2>Appearance</h2><div className="flex-theme-options" role="group" aria-label="Color theme">{Object.entries(THEMES).map(([key, name]) => <button type="button" key={key} className="flex-theme-choice" aria-pressed={appearance.theme === key} onClick={() => onChange({ theme: key })}><i className={`flex-swatch ${key}`} />{name}</button>)}</div>
+    <Field label={`Darkness · ${appearance.darkness}%`}><input className="flex-range" type="range" min="0" max="100" step="1" value={appearance.darkness} onChange={event => onChange({ darkness: Number(event.target.value) })} /></Field><div className="flex-range-labels"><span>Softer</span><span>Deeper</span></div>
+    <Field label={`Raise bottom menu · ${appearance.menuLift}px`}><input className="flex-range" type="range" min="0" max="160" step="4" value={appearance.menuLift} onChange={event => onChange({ menuLift: Number(event.target.value) })} /></Field><div className="flex-range-labels"><span>Lower</span><span>Higher</span></div><p className="flex-muted">Raise it above iPhone browser controls. Saved on this device.</p>
+  </section>;
 }
 
 function SetRow({ set, state, onRemove, date }) {

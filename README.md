@@ -69,6 +69,8 @@ Other catalog exercises do not automatically become weekly targets. SF Ocean sta
 
 ## Credit, ranking and progress
 
+The flexible UI uses Night by default, with Burgundy/Carbon and a darkness control in **Settings → Appearance**. **Raise bottom menu** adds up to 160px of clearance above the iPhone browser controls, on top of the safe-area inset; the rest timer follows the same clearance. These preferences use the separate browser key `fitness_appearance_v1` and never enter the Notion state or sync queue. Next's adjustable daily display goal defaults to `ceil(active weekly occasions / 3)`; it displays existing completion results without changing qualification or ranking. Targets shows the rolling weekly total. Recommendations retain the existing order and buckets, with further tiles expanding inline. Exercise thumbnails use their own Notion images and fall back to icons; an expired signed image can refresh through the existing read-only guide endpoint.
+
 - **Credit:** explicit exercise-to-target mappings. One occasion per target per local calendar day after qualifying sets; combine sessions and setups that day. An incomplete day cannot borrow sets from another date.
 - **Fatigue:** shared primary/supporting muscle IDs. Partial working sets count immediately; each physical set counts once regardless of how many targets it credits.
 - **Progress:** exact exercise ID + comparable equipment ID, with unit conversion inside that pair. A shared target never combines weight curves.

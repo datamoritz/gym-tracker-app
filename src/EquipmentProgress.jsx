@@ -12,7 +12,7 @@ export default function EquipmentProgress({ history, unit }) {
   return <section className="flex-progress-chart" aria-label="Exercise and equipment progress">
     <strong>{selected.weight} {unit} × {selected.reps}</strong><span className="flex-chart-date">{date(selected.trainingDate)}{selected.demo ? ' · Demo' : ''}{selected.id === last.id ? ' · Last' : ''}</span>
     <svg viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`Load in ${unit} and reps across ${history.length} sets for the selected exercise and equipment profile`}>
-      {[['weight', unit, '#8ab4f8'], ['reps', 'Reps', '#c4b5fd']].map(([metric, label, color], plotIndex) => {
+      {[['weight', unit, '#91c9ff'], ['reps', 'Reps', '#f6b16c']].map(([metric, label, color], plotIndex) => {
         const top = 28 + plotIndex * 142;
         const maximum = Math.max(...history.map(set => set[metric]), 1) * 1.12;
         const y = set => top + (1 - set[metric] / maximum) * plotHeight;
