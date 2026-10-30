@@ -92,18 +92,47 @@ test('working sets combine across sessions, while the preference resets at 4 a.m
   assert.equal(openingCompoundProgress({...next,sets:next.sets.slice(0,-1)},DAY,'2026-10-30T07:23:00Z').completed,1);
 });
 
-test('the opening bonus never moves recovering, optional or completed work into Recommended',async()=>{
+test('opening compounds stay visible with recovery penalties; optional and completed work retain their buckets',async()=>{
   const {state,log,row,rank,target}=await fixture();
   const previous=log(state,'chest',2,{day:'2026-10-28',now:'2026-10-29T06:50:00Z'});
-  assert.equal(row(previous,'chest').bucket,'other');
-  assert.equal(row(previous,'chest').openingBonus,0);
+  const opening=row(previous,'chest');
+  const normal=row({...previous,rankingConfig:{openingCompoundBonus:0}},'chest');
+  assert.equal(opening.bucket,'recommended');
+  assert.equal(opening.openingBonus,2);
+  assert.equal(normal.bucket,'other');
+  assert.equal(opening.fatigueModifier,normal.fatigueModifier);
+  assert.ok(opening.fatigueModifier<0.7);
+  assert.ok(opening.reasonCodes.includes('RECENT_OVERLAP'));
   const optional={...state,targets:state.targets.map(t=>t.id===target(state,'chest').id?{...t,optional:true}:t)};
   assert.equal(row(optional,'chest').bucket,'other');
   assert.equal(row(optional,'chest').openingBonus,0);
   const done=log(state,'chest',3);
   assert.equal(row(done,'chest').bucket,'done');
   assert.equal(row(done,'chest').openingBonus,0);
-  assert.deepEqual(rank(previous).map(r=>[r.target.id,r.bucket]).sort(),rank({...previous,rankingConfig:{openingCompoundBonus:0}}).map(r=>[r.target.id,r.bucket]).sort());
+  for(const candidate of rank(previous).filter(r=>r.exercise.type!=='compound')) {
+    assert.equal(candidate.bucket,row({...previous,rankingConfig:{openingCompoundBonus:0}},candidate.target.presetKey).bucket);
+  }
+});
+
+test('regression: when every due larger exercise is below the recovery threshold, core still does not lead the opening',async()=>{
+  const {state,log,rank,row,finishFlexibleSession,openingCompoundProgress}=await fixture();
+  const previousOptions={day:'2026-10-28',now:'2026-10-29T06:50:00Z'};
+  let next=finishFlexibleSession(log(log(state,'chest',3,previousOptions),'lat',3,previousOptions));
+  next={...next,targets:next.targets.filter(t=>['chest','lat','wood','dead'].includes(t.presetKey))};
+  assert.equal(rank({...next,rankingConfig:{openingCompoundBonus:0}})[0].target.presetKey,'wood');
+  for(const key of ['chest','lat']) {
+    assert.ok(row(next,key).fatigueModifier<0.7);
+    assert.equal(row(next,key).bucket,'recommended');
+    assert.ok(row(next,key).reasonCodes.includes('RECENT_OVERLAP'));
+  }
+  assert.equal(rank(next)[0].exercise.type,'compound');
+  next=log(next,'chest',2);
+  assert.equal(openingCompoundProgress(next,DAY,NOW).completed,1);
+  assert.equal(rank(next)[0].target.presetKey,'lat');
+  next=log(next,'lat',3);
+  assert.equal(openingCompoundProgress(next,DAY,NOW).completed,2);
+  assert.equal(rank(next)[0].target.presetKey,'wood');
+  assert.deepEqual(rank(next),rank({...next,rankingConfig:{openingCompoundBonus:0}}));
 });
 
 test('a high-priority accessory can still win; opening changes neither log data nor target credit',async()=>{

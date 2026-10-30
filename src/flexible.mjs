@@ -117,10 +117,11 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
     const exerciseOptions = eligible.map(({ exercise, machines }) => {
       const modifiers = fatigueModifiers(exercise, target, sets, day, exerciseById, config, now);
       const suitable = modifiers.fatigueModifier >= config.recommendedFatigueThreshold;
-      const bucket = progress.finished_today || progress.rolling_target_met ? 'done' : suitable && !target.optional ? 'recommended' : 'other';
-      // Bucket eligibility and physiological modifiers stay unchanged. This
-      // additive preference can still be outweighed by a higher personal need.
-      const openingBonus = opening.remaining > 0 && bucket === 'recommended' && exercise.type === 'compound' ? config.openingCompoundBonus : 0;
+      const done = progress.finished_today || progress.rolling_target_met;
+      // Recovery is still a gradual score penalty. During the opening phase it
+      // must not categorically hide every compound behind untouched core work.
+      const openingBonus = opening.remaining > 0 && !done && !target.optional && exercise.type === 'compound' ? config.openingCompoundBonus : 0;
+      const bucket = done ? 'done' : !target.optional && (suitable || openingBonus > 0) ? 'recommended' : 'other';
       const alternatesPrimary = primaryMuscleIds(exercise).length > 0 && primaryMuscleIds(lastExercise).length > 0 &&
         !primaryMuscleIds(exercise).some(id => primaryMuscleIds(lastExercise).includes(id));
       return { exercise, machines, ...modifiers, bucket, baseScore, continuationBonus, openingBonus, orderingAdjustment: 0,
