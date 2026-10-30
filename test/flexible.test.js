@@ -108,7 +108,7 @@ test('recent training lowers priority without blocking an override or counting e
   const row = api.rankTargets(next, '2026-10-29').find(item => item.target.id === target.id);
   assert.equal(row.recovering, true);
   assert.ok(row.reasonCodes.includes('RECENT_OVERLAP'));
-  assert.ok(row.recoveryModifier < 1);
+  assert.ok(row.fatigueModifier < 1);
   assert.doesNotThrow(() => log(next, { day: '2026-10-29' }));
 });
 
@@ -127,7 +127,7 @@ test('partial working sets influence next-day spacing while same-day continuatio
   const { api, target, log, state } = await fixture();
   const next = log(state);
   const today = api.rankTargets(next, DAY).find(row => row.target.id === target.id);
-  assert.equal(today.recovering, false);
+  assert.equal(today.recovering, true);
   const tomorrow = api.rankTargets(next, '2026-10-29').find(row => row.target.id === target.id);
   assert.equal(tomorrow.progress.occasions, 0);
   assert.equal(tomorrow.recovering, true);

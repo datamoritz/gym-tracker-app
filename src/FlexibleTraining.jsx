@@ -40,7 +40,7 @@ function TargetEditor({ state, target, onSave, onClose }) {
   }}>
     <div className="flex-row"><h2>{target ? 'Edit target' : 'New target'}</h2><button type="button" className="flex-quiet" onClick={onClose}>Cancel</button></div>
     <Field label="Name"><input required value={form.name} onChange={event => change('name', event.target.value)} /></Field>
-    <div className="flex-grid"><Field label="Times / 7 days"><input type="number" min="1" max="7" required value={form.frequency} onChange={event => changeFrequency(event.target.value)} /></Field><Field label="Recovery window (days)"><input type="number" min="0" max="14" required value={form.spacingDays} onChange={event => change('spacingDays', event.target.value)} /></Field></div>
+    <div className="flex-grid"><Field label="Times / 7 days"><input type="number" min="1" max="7" required value={form.frequency} onChange={event => changeFrequency(event.target.value)} /></Field><Field label="Recovery window (hours)"><input type="number" min="0" max="336" step="1" required value={form.spacingDays === '' ? '' : Math.round(form.spacingDays * 24)} onChange={event => change('spacingDays', event.target.value === '' ? '' : Number(event.target.value) / 24)} /></Field></div>
     {form.prescriptions.map((dose, index) => <fieldset key={dose.id}><legend>{form.prescriptions.length > 1 ? `Occasion ${index + 1}` : 'Sets & reps'}</legend><div className="flex-grid flex-dose-fields">
       {[['requiredSets', 'Sets to qualify', 1, 20], ['maxSets', 'Recommended sets', 1, 20], ['repMin', 'Min reps', 1, 1000], ['repMax', 'Max reps', 1, 1000]].map(([key, label, min, max]) => <Field key={key} label={label}><input type="number" min={min} max={max} required value={dose[key]} onChange={event => changeDose(index, key, event.target.value)} /></Field>)}
     </div><label className="flex-check"><input type="checkbox" checked={dose.perSide} onChange={event => changeDose(index, 'perSide', event.target.checked)} />Per side</label></fieldset>)}
@@ -82,7 +82,7 @@ function Library({ state, commit, kind, onGuide }) {
       <button className="flex-primary">Save</button>
     </form>}
     {kind === 'exercise'
-      ? <div className="flex-list">{exercises.map(exercise => <div className="flex-list-row" key={exercise.id}><div><span>{exercise.name}</span><p className="flex-muted">{exerciseMachines(state, exercise.id).length} equipment profiles</p></div><div className="flex-actions"><ExerciseInfoButton exercise={exercise} onClick={() => onGuide(exercise)} /><button className="flex-quiet" aria-label={`Edit exercise ${exercise.name}`} onClick={() => open('exercise', exercise)}>Edit</button></div></div>)}</div>
+      ? <div className="flex-list">{exercises.map(exercise => <div className="flex-list-row" key={exercise.id}><div><span>{exercise.name}</span><p className="flex-muted">{exerciseMachines(state, exercise.id).length} equipment profiles</p></div><div className="flex-row-actions"><ExerciseInfoButton exercise={exercise} onClick={() => onGuide(exercise)} /><button className="flex-quiet" aria-label={`Edit exercise ${exercise.name}`} onClick={() => open('exercise', exercise)}>Edit</button></div></div>)}</div>
       : <div className="flex-list">{scopeItems(state, 'machines').filter(machine => machine.gymId === state.selectedGymId).sort(byName).map(machine => <div className="flex-list-row" key={machine.id}><div><span>{machine.name}</span><p className="flex-muted">{machine.stations?.length || 1} {(machine.stations?.length || 1) === 1 ? 'station' : 'stations'} · {scopedMachineExercises(state, machine.id).length} {scopedMachineExercises(state, machine.id).length === 1 ? 'exercise' : 'exercises'}</p></div><button className="flex-quiet" aria-label={`Edit machine ${machine.name}`} onClick={() => open('machine', machine)}>Edit</button></div>)}</div>}
   </>;
 }
@@ -182,8 +182,13 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const remainingRest = Math.max(0, Math.ceil((restUntil - now.getTime()) / 1000));
 
   return <div className={`flex-app${remainingRest > 0 ? ' has-rest-timer' : ''}`}>
-    <header className="flex-header"><h1>Training</h1>{state.gyms.length > 1 && <select aria-label="Gym" value={state.selectedGymId} disabled={Boolean(session)} onChange={event => { const id = event.target.value; commit(previous => ({ ...previous, selectedGymId: id })); setSelectedTargetId(null); }}>{state.gyms.map(gym => <option key={gym.id} value={gym.id}>{gym.name}</option>)}</select>}</header>
-    <nav className="flex-tabs" aria-label="Training views">{[['next', 'Next'], ['targets', 'Targets'], ['exercises', 'Exercises'], ['library', 'Machines'], ['history', 'History'], ['settings', 'Settings']].map(([key, title]) => <button key={key} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}>{title}</button>)}</nav>
+    <header className="flex-header"><h1>Training</h1><div className="flex-row-actions">
+      {state.gyms.length > 1 && <select aria-label="Gym" value={state.selectedGymId} disabled={Boolean(session)} onChange={event => { const id = event.target.value; commit(previous => ({ ...previous, selectedGymId: id })); setSelectedTargetId(null); }}>{state.gyms.map(gym => <option key={gym.id} value={gym.id}>{gym.name}</option>)}</select>}
+      <button type="button" className="flex-settings-button" aria-label="Settings" title="Settings" aria-current={tab === 'settings' ? 'page' : undefined} onClick={() => setTab('settings')}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+      </button>
+    </div></header>
+    <nav className="flex-tabs" aria-label="Training views">{[['next', 'Next'], ['targets', 'Targets'], ['exercises', 'Exercises'], ['library', 'Machines'], ['history', 'History']].map(([key, title]) => <button key={key} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}>{title}</button>)}</nav>
     {error && <div className="flex-error" role="alert">{error}<button className="flex-quiet" onClick={() => setError('')}>Dismiss</button></div>}
     {removed && <div className="flex-undo" role="status">Set removed<button className="flex-quiet" onClick={undoRemove}>Undo</button></div>}
     {testDate && <div className="flex-test-warning">Test date · {testDate}</div>}
@@ -192,7 +197,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
         {session && <div className="flex-toolbar"><span>{currentWorkingSets} {currentWorkingSets === 1 ? 'set' : 'sets'}</span><button className="flex-secondary" onClick={() => { if (commit(previous => finishFlexibleSession(previous))) { setSelectedTargetId(null); setRestUntil(0); } }}>Finish</button></div>}
         {previewMismatch && <p className="flex-error">Finish this session before changing the date.</p>}
         {selectedRow ? <section className="flex-panel flex-log-panel">
-          <div className="flex-row"><h2>{selectedRow.target.name}</h2><ExerciseInfoButton exercise={state.exercises.find(item => item.id === selectedExerciseId) || selectedRow.exercise} onClick={() => setGuideExercise(state.exercises.find(item => item.id === selectedExerciseId) || selectedRow.exercise)} /><button className="flex-quiet" onClick={() => setSelectedTargetId(null)}>Back</button></div>
+          <div className="flex-row"><h2>{selectedRow.target.name}</h2><div className="flex-row-actions"><ExerciseInfoButton exercise={state.exercises.find(item => item.id === selectedExerciseId) || selectedRow.exercise} onClick={() => setGuideExercise(state.exercises.find(item => item.id === selectedExerciseId) || selectedRow.exercise)} /><button className="flex-quiet" onClick={() => setSelectedTargetId(null)}>Back</button></div></div>
           <p className="flex-prescription">{prescription(selectedRow.progress.prescription)} · {selectedRow.progress.todaySets}/{selectedRow.progress.prescription.recommendedSets || selectedRow.progress.requiredSets} sets{selectedRow.progress.prescription.recommendedSets > selectedRow.progress.requiredSets ? ` · ${selectedRow.progress.requiredSets} to qualify` : ''}</p>
           {selectedRow.target.guidance && <p className="flex-muted">{selectedRow.target.guidance}</p>}
           {selectedRow.exercises.length > 1 && <Field label="Exercise"><select value={selectedExerciseId} onChange={event => chooseExercise(event.target.value, selectedRow.progress.prescription)}>{selectedRow.exercises.map(exercise => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}</select></Field>}
@@ -227,9 +232,10 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
         {editingTarget !== undefined && <TargetEditor key={editingTarget?.id || 'new'} state={state} target={editingTarget} onClose={() => setEditingTarget(undefined)} onSave={form => { if (commit(previous => saveTarget(previous, form))) setEditingTarget(undefined); }} />}
         <div className="flex-list">{scopeItems(state, 'targets').map(target => {
           const completed = Math.min(targetProgress(state, target, day, now.toISOString()).occasions, target.frequency);
-          return <div key={target.id} className="flex-list-row"><div><h3>{target.name}{target.optional ? ' · Optional' : ''}{!target.active ? ' · Paused' : ''}</h3><p className="flex-muted flex-target-details"><span>{target.frequency}× / 7d · {weeklyPrescription(target)}</span>
-            <span className="flex-target-progress"><progress value={completed} max={target.frequency} aria-label={`${target.name} progress in the last 7 days`} aria-valuetext={`${completed} of ${target.frequency} training days completed`} /><span aria-hidden="true">{completed}/{target.frequency}</span></span></p>
-          </div><button className="flex-quiet" aria-label={`Edit target ${target.name}`} onClick={() => setEditingTarget(target)}>Edit</button></div>;
+          return <div key={target.id} className="flex-list-row"><div><h3>{target.name}{target.optional ? ' · Optional' : ''}{!target.active ? ' · Paused' : ''}</h3><p className="flex-muted flex-target-details"><span>{target.frequency}× / 7d · {weeklyPrescription(target)}</span></p></div>
+            <div className="flex-row-actions"><span className="flex-target-progress"><progress value={completed} max={target.frequency} aria-label={`${target.name} progress in the last 7 days`} aria-valuetext={`${completed} of ${target.frequency} training days completed`} /><span aria-hidden="true">{completed}/{target.frequency}</span></span>
+              <button className="flex-quiet" aria-label={`Edit target ${target.name}`} onClick={() => setEditingTarget(target)}>Edit</button></div>
+          </div>;
         })}</div>
       </>}
       {(tab === 'exercises' || tab === 'library') && <Library key={tab} state={state} commit={commit} kind={tab === 'exercises' ? 'exercise' : 'machine'} onGuide={setGuideExercise} />}
@@ -300,21 +306,21 @@ function RankingSettings({ state, commit }) {
 function RankingOverview({ config }) {
   return <section className="flex-ranking-overview" aria-label="How Next is ordered">
     <h3>How Next is ordered</h3>
-    <p>Uses your last seven local calendar days and exercises linked to equipment at this gym.</p>
+    <p>Weekly progress uses the last seven local calendar days. Recovery uses elapsed hours. Choices need linked equipment at this gym.</p>
     <dl>
-      <div><dt>1. Group</dt><dd><strong>Recommended</strong> — due, with suitable recovery and today’s workload.<br /><strong>Other options</strong> — due, with more muscle overlap, or optional.<br /><strong>Done</strong> — today’s sets completed or rolling target met.</dd></div>
-      <div><dt>2. Score within each group</dt><dd>More weekly work remaining and higher personal priority raise the score. Recent shared-muscle work and today’s accumulated sets lower it. Primary muscles count more than supporting muscles.</dd></div>
+      <div><dt>1. Group</dt><dd><strong>Recommended</strong> — due, with suitable recovery.<br /><strong>Other options</strong> — due, with more muscle overlap, or optional.<br /><strong>Done</strong> — today’s sets completed or rolling target met.</dd></div>
+      <div><dt>2. Score within each group</dt><dd>More weekly work remaining and higher personal priority raise the score. Overlapping working sets lower it, fading gradually over the target’s recovery window (48 hours by default). Primary muscles count more than supporting muscles.</dd></div>
       <div><dt>3. Small adjustments</dt><dd>Unfinished sets today get a continuation boost. Isolation gets a small penalty while a suitable, due compound of equal or higher priority needs those muscles. Near-equal scores favor different primary muscles from your last exercise; further ties keep plan order.</dd></div>
     </dl>
     <p>Chest press before flies is a preference. A higher-scoring fly can come first. You can choose from any group; equipment stays alphabetical.</p>
     <details className="flex-details"><summary>Current calculation</summary>
-      <p className="flex-ranking-formula">Score = (remaining ÷ weekly target × priority) × recovery × today + continue bonus − isolation penalty</p>
+      <p className="flex-ranking-formula">Score = (remaining ÷ weekly target × priority) × fatigue factor + continue bonus − isolation penalty</p>
       <dl>
         <div><dt>Weekly need &amp; priority</dt><dd>One of two occasions completed means ½ remains. Normal ×1, Important ×2, High ×3. At Important, that starts at 1 before the modifiers.</dd></div>
-        <div><dt>Recovery &amp; today</dt><dd>Each factor is 1 ÷ (1 + weighted sets × penalty). Earlier days fade within the target’s recovery window; today’s sets count only toward today’s factor. Sets combine across sessions and gyms.</dd></div>
-        <div><dt>Saved weights</dt><dd>Primary muscles: 1; supporting: {config.supportingWeight}. Overlap is normalized, capped at one equivalent set per logged set. Recovery penalty: {config.recoveryPenaltyPerSet}; today: {config.sessionPenaltyPerSet}.</dd></div>
+        <div><dt>Continuous recovery</dt><dd>One factor is 1 ÷ (1 + weighted sets × penalty). Each set’s contribution fades linearly from full influence when logged to zero after 48 elapsed hours by default. A target’s Recovery window can change this duration. Today’s and earlier sets combine across sessions and gyms, with each set counted once and no switch at midnight.</dd></div>
+        <div><dt>Saved weights</dt><dd>Primary muscles: 1; supporting: {config.supportingWeight}. Overlap is normalized, capped at one equivalent set per logged set. Fatigue penalty: {config.fatiguePenaltyPerSet}.</dd></div>
         <div><dt>Saved adjustments</dt><dd>Continue: +{config.continuationBonus}. Isolation: up to −{config.isolationPenalty}, scaled by overlap.</dd></div>
-        <div><dt>Recommended thresholds</dt><dd>Recovery ≥ {config.recommendedRecoveryThreshold} and today ≥ {config.recommendedSessionThreshold}. Group comes before score; optional targets stay in Other options. Scores are compared to two decimal places before the alternation tie-breaker.</dd></div>
+        <div><dt>Recommended thresholds</dt><dd>Fatigue factor ≥ {config.recommendedFatigueThreshold}. Group comes before score; optional targets stay in Other options. Scores are compared to two decimal places before the alternation tie-breaker.</dd></div>
         <div><dt>Completion &amp; fatigue</dt><dd>An occasion counts once per target per local day after its qualifying sets are completed, combining setups and sessions. Recommended sets can be higher. Partial sets affect fatigue without earning an occasion. Shared muscles alone never award another target credit. Weight and reps don’t affect ranking.</dd></div>
       </dl>
       <p>For targets with alternatives, the best-ranked eligible exercise determines the card’s position. These factors are adjustable estimates, not measurements of recovery.</p>

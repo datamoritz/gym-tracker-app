@@ -28,24 +28,24 @@ test('partial work changes shared-muscle fatigue without awarding another exerci
   assert.ok(chest.reasonCodes.includes('CONTINUE'));
   assert.equal(fly.progress.todaySets, 0);
   assert.equal(fly.progress.occasions, 0);
-  assert.ok(fly.sessionModifier < 1);
-  assert.equal(fly.recoveryModifier, 1);
+  assert.ok(fly.fatigueModifier < 1);
+  assert.ok(fly.fatigueLoad > 0);
   assert.ok(fly.reasonCodes.includes('SESSION_OVERLAP'));
-  assert.equal(lateral.sessionModifier, 1);
-  assert.equal(lateral.recoveryModifier, 1);
+  assert.equal(lateral.fatigueModifier, 1);
+  assert.equal(lateral.fatigueModifier, 1);
 });
 
-test('partial previous-day work affects recovery, never today’s modifier', async () => {
+test('partial previous-day work affects the same continuous fatigue factor', async () => {
   const { state, log, row } = await setup();
   const next = log(state, 'chest', 1, { day: '2026-10-28' });
   const fly = row(next, 'fly');
-  assert.ok(fly.recoveryModifier < 1);
-  assert.equal(fly.sessionModifier, 1);
+  assert.ok(fly.fatigueModifier < 1);
+  assert.ok(fly.fatigueLoad > 0);
   assert.ok(fly.reasonCodes.includes('RECENT_OVERLAP'));
   assert.ok(!fly.reasonCodes.includes('SESSION_OVERLAP'));
   assert.equal(row(next, 'chest').progress.occasions, 0);
   const recovered = row(next, 'fly', '2026-10-30', '2026-10-30T20:00:00Z');
-  assert.equal(recovered.recoveryModifier, 1);
+  assert.equal(recovered.fatigueModifier, 1);
 });
 
 test('today’s overlapping work accumulates across sessions and gyms', async () => {
@@ -66,7 +66,7 @@ test('today’s overlapping work accumulates across sessions and gyms', async ()
   next = log(next, 'chest', 1, { machineId });
   next = { ...finishFlexibleSession(next), selectedGymId: originalGymId };
   assert.ok(Math.abs(row(next, 'fly').todayLoad - one * 3) < 1e-10);
-  assert.ok(row(next, 'fly').sessionModifier < row(log(state, 'chest'), 'fly').sessionModifier);
+  assert.ok(row(next, 'fly').fatigueModifier < row(log(state, 'chest'), 'fly').fatigueModifier);
   assert.equal(row(next, 'chest').progress.occasions, 1);
 });
 
@@ -76,7 +76,7 @@ test('primary involvement contributes more fatigue than supporting involvement',
   const primary = row(log(state, 'triceps'), 'triceps');
   assert.ok(support.todayLoad > 0);
   assert.ok(primary.todayLoad > support.todayLoad);
-  assert.ok(primary.sessionModifier < support.sessionModifier);
+  assert.ok(primary.fatigueModifier < support.fatigueModifier);
 });
 
 test('credit combines setups and sessions within a local day, with separate derived completion flags', async () => {
@@ -112,7 +112,7 @@ test('credit combines setups and sessions within a local day, with separate deri
   const deleted = { ...next, sets: next.sets.slice(0, -1) };
   assert.equal(row(deleted, 'chest').finished_today, false);
   assert.equal(row(deleted, 'chest').rolling_target_met, false);
-  assert.ok(row(deleted, 'fly').sessionModifier < 1);
+  assert.ok(row(deleted, 'fly').fatigueModifier < 1);
   assert.ok(row(deleted, 'fly').todayLoad < row(next, 'fly').todayLoad);
 });
 
@@ -136,8 +136,9 @@ test('incomplete work never earns an occasion even across local-day boundaries',
   next = log(finishFlexibleSession(next), 'chest', 1);
   assert.equal(row(next, 'chest').progress.occasions, 0);
   assert.equal(row(next, 'chest').progress.todaySets, 1);
-  assert.ok(row(next, 'fly').recoveryModifier < 1);
-  assert.ok(row(next, 'fly').sessionModifier < 1);
+  assert.ok(row(next, 'fly').fatigueModifier < 1);
+  assert.ok(row(next, 'fly').recentLoad > 0);
+  assert.ok(row(next, 'fly').todayLoad > 0);
 });
 
 test('duplicate, demo, warmup and future sets do not inflate credit or fatigue', async () => {
@@ -152,7 +153,7 @@ test('duplicate, demo, warmup and future sets do not inflate credit or fatigue',
   assert.equal(row(next, 'chest').progress.todaySets, 1);
   assert.equal(targetProgress(next, targetFor(next, 'chest'), DAY, NOW).occasions, 0);
   assert.equal(rankTargets(next, DAY, NOW).find(row => row.target.presetKey === 'chest').finished_today, false);
-  assert.equal(row(real, 'fly', DAY, '2026-10-29T19:00:00Z').todayLoad, original.todayLoad);
+  assert.ok(row(real, 'fly', DAY, '2026-10-29T19:00:00Z').fatigueLoad > original.fatigueLoad);
 });
 
 test('candidates require active explicit exercise links and equipment at the selected gym', async () => {
@@ -195,7 +196,7 @@ test('compound ordering is a soft preference: a larger shortfall or higher prior
 
 test('alternation is only a small tie-breaker, not a mandatory sequence', async () => {
   const { state, log, rankTargets, DEFAULT_RANKING } = await setup();
-  let next = log({ ...state, rankingConfig: { ...DEFAULT_RANKING, sessionPenaltyPerSet: 0, continuationBonus: 0, isolationPenalty: 0 } }, 'chest');
+  let next = log({ ...state, rankingConfig: { ...DEFAULT_RANKING, fatiguePenaltyPerSet: 0, continuationBonus: 0, isolationPenalty: 0 } }, 'chest');
   assert.equal(rankTargets(next, DAY, NOW)[0].target.presetKey, 'lateral');
   next = { ...next, targets: next.targets.map(target => target.presetKey === 'chest' ? { ...target, priority: 3 } : target) };
   assert.equal(rankTargets(next, DAY, NOW)[0].target.presetKey, 'chest');
@@ -211,8 +212,8 @@ test('missing metadata is neutral and the best eligible exercise alternative gui
   assert.equal(candidate.exerciseOptions.length, 2);
   const unknown = { ...next, exercises: next.exercises.map(exercise => lateral.exerciseIds.includes(exercise.id) ? { ...exercise, primaryMuscleIds: [], supportingMuscleIds: [], type: null } : exercise) };
   const neutral = row(unknown, 'lateral').exerciseOptions.find(option => option.exercise.id === lateral.exerciseIds[0]);
-  assert.equal(neutral.sessionModifier, 1);
-  assert.equal(neutral.recoveryModifier, 1);
+  assert.equal(neutral.fatigueModifier, 1);
+  assert.equal(neutral.fatigueLoad, 0);
   assert.equal(neutral.orderingAdjustment, 0);
 });
 
@@ -232,9 +233,9 @@ test('heuristics are validated, persisted, and can disable supporting-muscle fat
   const configured = saveRankingConfig(state, { ...DEFAULT_RANKING, supportingWeight: 0, continuationBonus: 0 });
   const restored = readFlexibleState({ getItem: () => JSON.stringify(configured) });
   assert.deepEqual(rankingConfig(restored), { ...DEFAULT_RANKING, supportingWeight: 0, continuationBonus: 0 });
-  assert.equal(row(log(restored, 'chest'), 'triceps').sessionModifier, 1);
+  assert.equal(row(log(restored, 'chest'), 'triceps').fatigueModifier, 1);
   assert.ok(row(log(restored, 'chest'), 'chest').reasonCodes.includes('CONTINUE'));
-  for (const values of [{ supportingWeight: 2 }, { recommendedRecoveryThreshold: -1 }, { sessionPenaltyPerSet: '' }, { isolationPenalty: Infinity }]) {
+  for (const values of [{ supportingWeight: 2 }, { recommendedFatigueThreshold: -1 }, { fatiguePenaltyPerSet: '' }, { isolationPenalty: Infinity }]) {
     assert.throws(() => saveRankingConfig(state, { ...DEFAULT_RANKING, ...values }));
   }
   assert.equal(rankingConfig({ rankingConfig: { supportingWeight: 'bad' } }).supportingWeight, DEFAULT_RANKING.supportingWeight);

@@ -46,6 +46,12 @@ body:has(.flex-app) { background: radial-gradient(ellipse at top, #8ab4f80b, tra
 .flex-list-row { padding: 12px 0; border-bottom: 1px solid #28292c; }
 .flex-list-row > span { font-size: 14px; }
 .flex-list-row > div { flex: 1; min-width: 0; }
+.flex-row-actions { display: flex; align-items: center; justify-content: flex-end; flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; margin-left: auto; }
+.flex-list-row > .flex-row-actions { flex: 0 0 auto; }
+.flex-row > h2 { min-width: 0; }
+.flex-app .flex-settings-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 10px; border-radius: 12px; background: transparent; color: #9aa0a6; }
+.flex-app .flex-settings-button:hover { background: #ffffff08; color: #d3dbea; }
+.flex-app .flex-settings-button[aria-current='page'] { color: #8ab4f8; background: #8ab4f81c; }
 .flex-target-details { display: flex; align-items: center; gap: 12px; }
 .flex-target-details > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flex-target-progress { display: inline-flex; align-items: center; flex-shrink: 0; gap: 6px; color: #a7bad7; font-size: 11px; font-variant-numeric: tabular-nums; }

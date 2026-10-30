@@ -101,13 +101,13 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
     const continuing = progress.todaySets > 0 && !progress.finished_today;
     const continuationBonus = continuing ? config.continuationBonus : 0;
     const exerciseOptions = eligible.map(({ exercise, machines }) => {
-      const modifiers = fatigueModifiers(exercise, target, sets, day, exerciseById, config);
-      const suitable = modifiers.recoveryModifier >= config.recommendedRecoveryThreshold && modifiers.sessionModifier >= config.recommendedSessionThreshold;
+      const modifiers = fatigueModifiers(exercise, target, sets, day, exerciseById, config, now);
+      const suitable = modifiers.fatigueModifier >= config.recommendedFatigueThreshold;
       const bucket = progress.finished_today || progress.rolling_target_met ? 'done' : suitable && !target.optional ? 'recommended' : 'other';
       const alternatesPrimary = primaryMuscleIds(exercise).length > 0 && primaryMuscleIds(lastExercise).length > 0 &&
         !primaryMuscleIds(exercise).some(id => primaryMuscleIds(lastExercise).includes(id));
       return { exercise, machines, ...modifiers, bucket, baseScore, continuationBonus, orderingAdjustment: 0,
-        score: baseScore * modifiers.recoveryModifier * modifiers.sessionModifier + continuationBonus, alternatesPrimary };
+        score: baseScore * modifiers.fatigueModifier + continuationBonus, alternatesPrimary };
     });
     return [{ target, progress, exerciseOptions, shortfall, finished_today: progress.finished_today, rolling_target_met: progress.rolling_target_met }];
   });
@@ -134,7 +134,7 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
       exercises: row.exerciseOptions.map(option => option.exercise),
       machines: [...new Map(row.exerciseOptions.flatMap(option => option.machines).map(machine => [machine.id, machine])).values()].sort(byName),
       reasonCodes, reasons: [...reasonCodes.map(code => NEXT_REASONS[code]), ...(best.orderingAdjustment < 0 ? ['Better later · overlapping compound work remains'] : [])],
-      recovering: best.recentLoad > 0, deferred: best.orderingAdjustment < 0,
+      recovering: best.fatigueLoad > 0, deferred: best.orderingAdjustment < 0,
       extra: row.rolling_target_met && !row.finished_today });
   }
   return rows.sort((a, b) => compareRankedOptions(a, b) || (a.target.order || 0) - (b.target.order || 0) || a.target.id.localeCompare(b.target.id));
@@ -182,9 +182,10 @@ export function finishFlexibleSession(state, now = new Date().toISOString()) {
 
 export function saveTarget(state, input) {
   if (!input.name.trim()) throw new Error('Give the target a name.');
-  for (const [field, min, max] of [['frequency', 1, 7], ['requiredSets', 1, 20], ['spacingDays', 0, 14], ['priority', 1, 3]]) {
+  for (const [field, min, max] of [['frequency', 1, 7], ['requiredSets', 1, 20], ['priority', 1, 3]]) {
     if (!Number.isInteger(Number(input[field])) || Number(input[field]) < min || Number(input[field]) > max) throw new Error(`Check ${field}: use a whole number from ${min} to ${max}.`);
   }
+  if (!Number.isFinite(Number(input.spacingDays)) || input.spacingDays === '' || Number(input.spacingDays) < 0 || Number(input.spacingDays) > 14) throw new Error('Use a recovery window from 0 to 336 hours.');
   if (!input.exerciseIds.length || input.exerciseIds.some(id => !state.exercises.some(exercise => exercise.id === id))) throw new Error('Link at least one exercise option.');
   const existing = state.targets.find(target => target.id === input.id);
   const rawDoses = input.prescriptions?.length ? input.prescriptions : Array.from({ length: Number(input.frequency) }, () => input);

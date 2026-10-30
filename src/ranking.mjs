@@ -1,27 +1,25 @@
 // Configurable ordering heuristics, not measurements of physiological recovery.
 export const DEFAULT_RANKING = Object.freeze({
   supportingWeight: 0.35,
-  recoveryPenaltyPerSet: 0.35,
-  sessionPenaltyPerSet: 0.2,
-  recommendedRecoveryThreshold: 0.7,
-  recommendedSessionThreshold: 0.65,
+  fatiguePenaltyPerSet: 0.35,
+  recommendedFatigueThreshold: 0.7,
   continuationBonus: 0.08,
   isolationPenalty: 0.12
 });
 
 export const RANKING_FIELDS = [
   ['supportingWeight', 'Supporting muscle weight', 0, 1],
-  ['recoveryPenaltyPerSet', 'Recovery penalty / set', 0, 5],
-  ['sessionPenaltyPerSet', 'Today’s penalty / set', 0, 5],
-  ['recommendedRecoveryThreshold', 'Recovery threshold', 0, 1],
-  ['recommendedSessionThreshold', 'Today’s threshold', 0, 1],
+  ['fatiguePenaltyPerSet', 'Fatigue penalty / set', 0, 5],
+  ['recommendedFatigueThreshold', 'Recommended threshold', 0, 1],
   ['continuationBonus', 'Continue bonus', 0, 0.25],
   ['isolationPenalty', 'Isolation ordering penalty', 0, 0.5]
 ];
 
 export function rankingConfig(state) {
+  // Preserve previously configured recovery weights when upgrading to one factor.
+  const legacy = { fatiguePenaltyPerSet: 'recoveryPenaltyPerSet', recommendedFatigueThreshold: 'recommendedRecoveryThreshold' };
   return Object.fromEntries(RANKING_FIELDS.map(([key, , min, max]) => {
-    const value = state.rankingConfig?.[key];
+    const value = state.rankingConfig?.[key] ?? state.rankingConfig?.[legacy[key]];
     return [key, typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : DEFAULT_RANKING[key]];
   }));
 }
@@ -65,19 +63,27 @@ export function muscleOverlap(candidate, performed, config) {
   return scale ? Math.min(1, shared / Math.max(1, scale)) : 0;
 }
 
-export function fatigueModifiers(exercise, target, sets, day, exerciseById, config) {
-  let recentLoad = 0, todayLoad = 0;
+export function fatigueModifiers(exercise, target, sets, day, exerciseById, config, now = new Date().toISOString()) {
+  let recentLoad = 0, todayLoad = 0, fatigueLoad = 0;
+  const nowMs = Date.parse(now);
+  // The persisted duration remains in days for Notion/backward compatibility;
+  // each day now means exactly 24 elapsed hours, independent of calendar/DST.
+  const windowHours = Number(target.spacingDays ?? 2) * 24;
+  const seen = new Set();
   for (const set of sets) {
+    if (seen.has(set.id) || set.kind !== 'working' || set.demo) continue;
+    seen.add(set.id);
+    const ageHours = (nowMs - Date.parse(set.performedAt)) / 3600000;
+    if (!Number.isFinite(ageHours) || ageHours < 0 || ageHours >= windowHours || !(windowHours > 0)) continue;
     const overlap = muscleOverlap(exercise, exerciseById.get(set.exerciseId), config);
     if (!overlap) continue;
-    if (set.trainingDate === day) { todayLoad += overlap; continue; }
-    const ageDays = Math.round((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${set.trainingDate}T12:00:00Z`)) / 86400000);
-    const window = Number(target.spacingDays) || 0;
-    if (ageDays > 0 && ageDays < window) recentLoad += overlap * (1 - ageDays / window);
+    const load = overlap * (1 - ageHours / windowHours);
+    fatigueLoad += load;
+    if (set.trainingDate === day) todayLoad += load;
+    else recentLoad += load;
   }
-  return { recentLoad, todayLoad,
-    recoveryModifier: 1 / (1 + recentLoad * config.recoveryPenaltyPerSet),
-    sessionModifier: 1 / (1 + todayLoad * config.sessionPenaltyPerSet) };
+  // Date partitions only explain the reason; each set enters this factor once.
+  return { recentLoad, todayLoad, fatigueLoad, fatigueModifier: 1 / (1 + fatigueLoad * config.fatiguePenaltyPerSet) };
 }
 
 const bucketOrder = { recommended: 0, other: 1, done: 2 };

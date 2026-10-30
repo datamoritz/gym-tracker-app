@@ -110,7 +110,7 @@ function validateRecord(entity, record) {
   if (entity === 'assignments' && !idList(record.machineIds)) throw fail('Invalid equipment assignments.');
   if (entity === 'machines' && (!n.uuid(record.gymId) || !Array.isArray(record.stations) || !int(record.stations.length,1,50))) throw fail('Check the machine gym and stations.');
   if (entity === 'targets') {
-    if (!int(record.frequency,1,7) || !int(record.requiredSets,1,20) || !int(record.priority,1,3) || !int(record.spacingDays,0,14) || !idList(record.exerciseIds) || !record.exerciseIds.length || !Array.isArray(record.prescriptions) || record.prescriptions.length !== record.frequency) throw fail('Check the target frequency, sets and exercises.');
+    if (!int(record.frequency,1,7) || !int(record.requiredSets,1,20) || !int(record.priority,1,3) || !Number.isFinite(record.spacingDays) || record.spacingDays < 0 || record.spacingDays > 14 || !idList(record.exerciseIds) || !record.exerciseIds.length || !Array.isArray(record.prescriptions) || record.prescriptions.length !== record.frequency) throw fail('Check the target frequency, sets and exercises.');
     for (const dose of record.prescriptions) if (!n.uuid(dose.id) || !int(dose.requiredSets,1,20) || !int(dose.maxSets,dose.requiredSets,20) || !int(dose.repMin,1,1000) || !int(dose.repMax,dose.repMin,1000)) throw fail('Check the set and rep prescription.');
   }
   if (entity === 'sessions' && (!n.uuid(record.gymId) || !when(record.startedAt) || !/^\d{4}-\d{2}-\d{2}$/.test(record.trainingDate) || record.endedAt && !when(record.endedAt))) throw fail('Invalid session.');
