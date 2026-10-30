@@ -31,3 +31,21 @@ test('darkness changes surface tones without dimming text or mixing graph colors
     assert.ok(Object.values(deep).every(value=>/^#[0-9a-f]{6}$|^\d+px$/.test(value)));
   }
 });
+
+test('browser chrome and overscroll match the selected darkness and restore on leaving flexible mode', async () => {
+  const { applyBrowserAppearance, appearanceStyle } = await import('../src/trainingAppearance.mjs');
+  let content = '#131314';
+  const root = { style: { backgroundColor:'',colorScheme:'' } };
+  const body = { style: { backgroundColor:'#131314',colorScheme:'normal' } };
+  const meta = { getAttribute:()=>content,setAttribute:(_,value)=>{content=value;},removeAttribute:()=>{content=null;} };
+  const doc = { documentElement:root,body,querySelector:()=>meta };
+  const prefs = { theme:'burgundy',darkness:80 };
+  const color = appearanceStyle(prefs)['--bg'];
+  const restore = applyBrowserAppearance(doc,prefs);
+  assert.equal(content,color); assert.equal(root.style.backgroundColor,color); assert.equal(body.style.backgroundColor,color);
+  assert.equal(root.style.colorScheme,'dark'); assert.equal(body.style.colorScheme,'dark');
+  restore();
+  assert.equal(content,'#131314'); assert.equal(root.style.backgroundColor,''); assert.equal(body.style.backgroundColor,'#131314');
+  assert.equal(body.style.colorScheme,'normal');
+  assert.doesNotThrow(()=>applyBrowserAppearance({documentElement:root,body:null,querySelector:()=>null},{})());
+});

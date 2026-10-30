@@ -29,3 +29,18 @@ export function appearanceStyle(value) {
   const prefs = normalizeAppearance(value);
   return { ...Object.fromEntries(Object.entries(palettes[prefs.theme]).map(([key,color]) => [`--${key}`, ['ink','muted','accent','button-ink'].includes(key) ? color : tone(color,prefs.darkness)])), '--menu-lift': `${prefs.menuLift}px` };
 }
+
+// Match browser chrome and overscroll/safe-area surfaces to the app palette.
+export function applyBrowserAppearance(doc, value) {
+  const color = appearanceStyle(value)['--bg'];
+  const surfaces = [doc.documentElement, doc.body].filter(Boolean);
+  const previous = surfaces.map(element => ({ element, color: element.style.backgroundColor, scheme: element.style.colorScheme }));
+  const meta = doc.querySelector('meta[name="theme-color"]');
+  const previousMeta = meta?.getAttribute('content');
+  for (const element of surfaces) { element.style.backgroundColor = color; element.style.colorScheme = 'dark'; }
+  meta?.setAttribute('content', color);
+  return () => {
+    for (const { element, color, scheme } of previous) { element.style.backgroundColor = color; element.style.colorScheme = scheme; }
+    if (meta) { if (previousMeta === null) meta.removeAttribute('content'); else meta.setAttribute('content', previousMeta); }
+  };
+}

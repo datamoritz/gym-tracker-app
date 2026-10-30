@@ -4,6 +4,11 @@ import App from './App';
 import './styles.css';
 import PrivateAccess from './PrivateAccess.jsx';
 import SyncedTraining from './SyncedTraining.jsx';
+import { readAppearance, applyBrowserAppearance } from './trainingAppearance.mjs';
+
+if (new URLSearchParams(window.location.search).get('mode') !== 'routines') {
+  try { applyBrowserAppearance(document, readAppearance(localStorage)); } catch { applyBrowserAppearance(document, {}); }
+}
 
 const FlexibleTraining = import.meta.env.DEV ? React.lazy(() => import('./FlexibleTraining')) : null;
 

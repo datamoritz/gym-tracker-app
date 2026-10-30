@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FLEXIBLE_KEY, newId, trainingDay, readFlexibleState, activeSession, rankTargets, targetProgress, targetSets, sessionSets,
   startFlexibleSession, addFlexibleSet, finishFlexibleSession, saveTarget, saveExercise, saveMachine, prescription, weeklyPrescription } from './flexible.mjs';
 import './flexible.css';
 import './training-ui.css';
 import TrainingIcon, { exerciseGlyph, equipmentGlyph } from './TrainingIcon.jsx';
 import ExerciseThumbnail from './ExerciseThumbnail.jsx';
-import { THEMES, readAppearance, writeAppearance, normalizeAppearance, appearanceStyle } from './trainingAppearance.mjs';
+import { THEMES, readAppearance, writeAppearance, normalizeAppearance, appearanceStyle, applyBrowserAppearance } from './trainingAppearance.mjs';
 import WorkoutValues from './WorkoutValues.jsx';
 import EquipmentProgress from './EquipmentProgress.jsx';
 import EquipmentAssignments from './EquipmentAssignments.jsx';
@@ -55,7 +56,7 @@ function TargetEditor({ state, target, onSave, onClose }) {
   </form>;
 }
 
-function Library({ state, commit, kind, onGuide }) {
+function Library({ state, commit, kind, onGuide, headerActions }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
   const exercises = scopeItems(state, 'exercises').sort(byName);
@@ -67,7 +68,7 @@ function Library({ state, commit, kind, onGuide }) {
   };
   const change = (key, value) => setForm(previous => ({ ...previous, [key]: value }));
   return <>
-    {!state.testingScope && <div className="flex-toolbar"><span /><button className="flex-secondary" onClick={() => open(kind)}>{kind === 'exercise' ? '+ Exercise' : '+ Machine'}</button></div>}
+    {!state.testingScope && headerActions && createPortal(<button className="flex-secondary flex-header-add" onClick={() => open(kind)}>{kind === 'exercise' ? '+ Exercise' : '+ Machine'}</button>, headerActions)}
     {editing && <form className="flex-panel flex-editor" onSubmit={event => { event.preventDefault(); if (commit(previous => {
       if (editing !== 'exercise') return saveMachine(previous, form);
       const next = saveExercise(previous, form);
@@ -115,6 +116,8 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const [expandedRecommendations, setExpandedRecommendations] = useState(false);
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState('');
+  const [headerActions, setHeaderActions] = useState(null);
+  useLayoutEffect(() => applyBrowserAppearance(document, appearance), [appearance.theme, appearance.darkness]);
   function updateAppearance(changes) {
     const next = normalizeAppearance({ ...appearance, ...changes });
     try { writeAppearance(localStorage, next); setAppearance(next); }
@@ -210,6 +213,8 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   return <div className={`flex-app training-ui theme-${appearance.theme}${isPlaying ? ' is-playing' : ''}${remainingRest > 0 ? ' has-rest-timer' : ''}`} style={style}>
     {!isPlaying && <header className="flex-header"><div><h1>{pageTitle}</h1>{tab === 'next' && <span className="flex-gym-location"><TrainingIcon name="pin" />{labelFor(state.gyms, state.selectedGymId)}</span>}</div><div className="flex-row-actions">
       {state.gyms.length > 1 && <select aria-label="Gym" value={state.selectedGymId} disabled={Boolean(session)} onChange={event => { const id = event.target.value; commit(previous => ({ ...previous, selectedGymId: id })); setSelectedTargetId(null); }}>{state.gyms.map(gym => <option key={gym.id} value={gym.id}>{gym.name}</option>)}</select>}
+      {!state.testingScope && tab === 'targets' && <button className="flex-secondary flex-header-add" onClick={() => setEditingTarget(null)}>+ Target</button>}
+      <span className="flex-header-add-slot" ref={setHeaderActions} />
       <button type="button" className="flex-settings-button" aria-label={tab === 'settings' ? 'Back to Training' : 'Settings'} onClick={() => setTab(tab === 'settings' ? 'next' : 'settings')}><TrainingIcon name={tab === 'settings' ? 'close' : 'settings'} /></button>
     </div></header>}
     {!isPlaying && <nav className="flex-tabs" aria-label="Training views">{[['next', 'Next'], ['targets', 'Targets'], ['exercises', 'Exercises'], ['library', 'Machines'], ['history', 'History']].map(([key, title]) => <button key={key} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}><TrainingIcon name={key} /><span>{title}</span></button>)}</nav>}
@@ -257,7 +262,6 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
       </>}
       {tab === 'targets' && <>
         <div className="flex-overview-progress"><span>Rolling 7 days</span><progress value={weeklyCompleted} max={weeklyTotal || 1} aria-label="Weekly target progress" /><strong>{weeklyCompleted}<small>/{weeklyTotal}</small></strong></div>
-        {!state.testingScope && <div className="flex-toolbar"><span /><button className="flex-secondary" onClick={() => setEditingTarget(null)}>+ Target</button></div>}
         {editingTarget !== undefined && <TargetEditor key={editingTarget?.id || 'new'} state={state} target={editingTarget} onClose={() => setEditingTarget(undefined)} onSave={form => { if (commit(previous => saveTarget(previous, form))) setEditingTarget(undefined); }} />}
         <div className="flex-list">{scopeItems(state, 'targets').map(target => {
           const completed = Math.min(targetProgress(state, target, day, now.toISOString()).occasions, target.frequency);
@@ -267,7 +271,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           </div>;
         })}</div>
       </>}
-      {(tab === 'exercises' || tab === 'library') && <Library key={tab} state={state} commit={commit} kind={tab === 'exercises' ? 'exercise' : 'machine'} onGuide={setGuideExercise} />}
+      {(tab === 'exercises' || tab === 'library') && <Library key={tab} state={state} commit={commit} kind={tab === 'exercises' ? 'exercise' : 'machine'} onGuide={setGuideExercise} headerActions={headerActions} />}
       {tab === 'history' && <>
         <div className="flex-grid">
           <Field label="Exercise"><select value={historyExercise?.id || ''} onChange={event => { setHistoryExerciseId(event.target.value); setHistoryMachineId(''); }}>{historyExercises.map(exercise => <option value={exercise.id} key={exercise.id}>{exercise.name}</option>)}</select></Field>
@@ -314,7 +318,7 @@ function TargetCard({ row, onChoose, featured = false, tile = false }) {
   const detail = <span className="flex-card-dose">{prescription(progress.prescription)}</span>;
   const note = `${progress.todaySets > 0 ? `${progress.todaySets}/${progress.prescription.recommendedSets || progress.requiredSets} sets` : ''}${status ? `${progress.todaySets > 0 ? ' · ' : ''}${status}` : ''}`;
   if (tile) return <button type="button" className="flex-rec-tile" aria-label={`${action} ${target.name}${note ? ` · ${note}` : ''}`} onClick={onChoose}><TrainingIcon name={exerciseGlyph(row.exercise)} /><h3>{target.name}</h3>{note && <span className="flex-tile-note">{note}</span>}<span className="flex-tile-footer">{detail}{count}</span></button>;
-  return <article className={`flex-target-card${featured ? ' flex-featured-choice' : ''}`} aria-label={target.name}><TrainingIcon className="flex-card-icon" name={exerciseGlyph(row.exercise)} /><div className="flex-target-content">{featured && <span className="flex-choice-label">{progress.todaySets && !row.finished_today ? 'Continue' : 'Good next choice'}</span>}<h3>{target.name}</h3><p className="flex-prescription">{detail}{note && <span> · {note}</span>}</p>{featured && <div className="flex-featured-count">{count}</div>}</div>{!featured && count}<button className="flex-secondary" aria-label={`${action} ${target.name}`} onClick={onChoose}>{featured ? <TrainingIcon name="arrow" /> : action}</button></article>;
+  return <article className={`flex-target-card${featured ? ' flex-featured-choice' : ''}`} aria-label={target.name}><TrainingIcon className="flex-card-icon" name={exerciseGlyph(row.exercise)} /><div className="flex-target-content">{featured && <span className="flex-choice-label">{progress.todaySets && !row.finished_today ? 'Continue' : 'Good next choice'}</span>}<h3>{target.name}</h3><p className="flex-prescription">{detail}{featured && <><span className="flex-dose-separator" aria-hidden="true"> · </span>{count}</>}{note && <span> · {note}</span>}</p></div>{!featured && count}<button className="flex-secondary" aria-label={`${action} ${target.name}`} onClick={onChoose}>{featured ? <TrainingIcon name="arrow" /> : action}</button></article>;
 }
 
 function AppearanceSettings({ appearance, onChange }) {
