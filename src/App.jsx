@@ -541,7 +541,7 @@ export default function App() {
     if (isLogging) return;
     if (!exercise.machineId) { setNotice('Select linked equipment before logging.'); return; }
     const performedAt = new Date().toISOString();
-    const set = { id: crypto.randomUUID(), machineId: exercise.machineId, performedAt, trainingDate: trainingDay(performedAt, trainingData?.timeZone), w: parseFloat(inputWeight) || 0, r: parseInt(inputReps, 10) || 0, weightUnit: unit, note: currentNote };
+    const set = { id: crypto.randomUUID(), machineId: exercise.machineId, performedAt, trainingDate: trainingDay(performedAt, trainingData?.timeZone, trainingData?.trainingDayStartHour ?? (trainingData?.production ? 4 : 0)), w: parseFloat(inputWeight) || 0, r: parseInt(inputReps, 10) || 0, weightUnit: unit, note: currentNote };
     setWorkoutLog(log => ({ ...log, [exercise.id]: [...(log[exercise.id] || []), set] }));
     setExercisePreferences(previous => ({ ...previous, [preferenceKey(activeRoutine, exercise)]: { suggestedWeight: set.w, weightUnit: unit } }));
     setCurrentNote(''); startTimer(exercise.defaultPause);

@@ -72,7 +72,7 @@ async function readAll() {
       images: (p.Images?.files || []).map(file => ({ name: file.name, url: file.file?.url || file.external?.url || '' })) };
   });
   const preferences = state.settings.find(item => item.id === cfg.settingsId) || state.settings[0] || {};
-  Object.assign(state, { timeZone: preferences.timeZone || 'America/Los_Angeles', selectedGymId: preferences.selectedGymId || state.gyms[0]?.id, rankingConfig: preferences.rankingConfig });
+  Object.assign(state, { timeZone: preferences.timeZone || 'America/Los_Angeles', trainingDayStartHour: preferences.trainingDayStartHour ?? 4, selectedGymId: preferences.selectedGymId || state.gyms[0]?.id, rankingConfig: preferences.rankingConfig });
   const activities = new Map();
   for (const set of state.sets) for (const activity of set.activities || []) activities.set(activity.id, activity);
   state.activities = [...activities.values()];
@@ -96,7 +96,7 @@ const ALLOWED = {
   targets: ['name','exerciseIds','frequency','requiredSets','recommendedSets','maxSets','repMin','repMax','perSide','prescriptions','windowDays','spacingDays','priority','active','optional','order','guidance'],
   sessions: ['gymId','startedAt','trainingDate','endedAt','restUntil'],
   sets: ['activityId','activityIds','sessionId','exerciseId','machineId','gymId','exerciseName','machineName','weight','reps','perSide','unit','kind','note','trainingDate','performedAt','activities','source','deleted'],
-  settings: ['name','timeZone','selectedGymId','rankingConfig']
+  settings: ['name','timeZone','trainingDayStartHour','selectedGymId','rankingConfig']
 };
 function validateOperation(op) {
   if (!op || !n.uuid(op.id) || !n.uuid(op.recordId) || !ALLOWED[op.entity] || !op.changes || Array.isArray(op.changes) || typeof op.changes !== 'object' ||
@@ -121,6 +121,7 @@ function validateRecord(entity, record) {
   }
   if (entity === 'settings') {
     try { new Intl.DateTimeFormat('en-US', { timeZone: record.timeZone }); } catch { throw fail('Invalid time zone.'); }
+    if (record.trainingDayStartHour != null && !int(record.trainingDayStartHour,0,23)) throw fail('Invalid training day reset hour.');
     if (!n.uuid(record.selectedGymId)) throw fail('Choose a gym.');
   }
 }

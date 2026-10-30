@@ -6,12 +6,7 @@ import { rankingConfig, uniqueWorkingSets, fatigueModifiers, muscleOverlap, comp
 export { prescription, weeklyPrescription } from './trainingTargets.mjs';
 export const FLEXIBLE_KEY = 'gym_flexible_preview_v1';
 export const newId = () => crypto.randomUUID();
-
-export function trainingDay(value = new Date(), timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone) {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value));
-  const part = name => parts.find(item => item.type === name).value;
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
+export { trainingDay } from './trainingCalendar.mjs';
 
 export function dayDistance(from, to) {
   return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86400000);

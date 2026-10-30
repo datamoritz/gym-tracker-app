@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FLEXIBLE_KEY, newId, trainingDay, readFlexibleState, activeSession, rankTargets, targetProgress, targetSets, sessionSets,
+import { FLEXIBLE_KEY, newId, readFlexibleState, activeSession, rankTargets, targetProgress, targetSets, sessionSets,
   startFlexibleSession, addFlexibleSet, finishFlexibleSession, saveTarget, saveExercise, saveMachine, prescription, weeklyPrescription } from './flexible.mjs';
 import './flexible.css';
 import './training-ui.css';
@@ -9,10 +9,14 @@ import ExerciseThumbnail from './ExerciseThumbnail.jsx';
 import { THEMES, readAppearance, writeAppearance, normalizeAppearance, appearanceStyle, applyBrowserAppearance } from './trainingAppearance.mjs';
 import WorkoutValues from './WorkoutValues.jsx';
 import EquipmentProgress from './EquipmentProgress.jsx';
+import TrainingHistory from './TrainingHistory.jsx';
+import DailyStar from './DailyStar.jsx';
+import { readDailyStars, starsForDay, toggleDailyStar } from './dailyStars.mjs';
+import { currentTrainingDay, dayStartHour, setTrainingDate } from './trainingCalendar.mjs';
 import EquipmentAssignments from './EquipmentAssignments.jsx';
 import AssignmentPicker from './AssignmentPicker.jsx';
 import ExerciseGuide, { ExerciseInfoButton } from './ExerciseGuide.jsx';
-import { byName, machineExerciseIds, exerciseMachines, exerciseHistoryMachines, equipmentHistory, lastEquipmentSet, setExerciseMachines } from './equipment.mjs';
+import { byName, machineExerciseIds, exerciseMachines, equipmentHistory, equipmentPrefill, lastExerciseMachine, setExerciseMachines } from './equipment.mjs';
 import { scopeItems, scopedMachineExercises } from './focusedExample.mjs';
 import { DEFAULT_RANKING, RANKING_FIELDS, rankingConfig, saveRankingConfig, NEXT_REASONS } from './ranking.mjs';
 
@@ -105,8 +109,9 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const [machineId, setMachineId] = useState('');
   const [input, setInput] = useState({ weight: 0, reps: 10, unit: 'kg', note: '' });
   const [editingTarget, setEditingTarget] = useState(undefined);
-  const [historyMachineId, setHistoryMachineId] = useState('');
-  const [historyExerciseId, setHistoryExerciseId] = useState('');
+  const [returnTargetId, setReturnTargetId] = useState(null);
+  const starKey = initial.state?.production ? 'fitness_daily_stars_v1' : 'fitness_preview_stars_v1';
+  const [dailyStars, setDailyStars] = useState(() => { try { return readDailyStars(localStorage, starKey); } catch { return {}; } });
   const [removed, setRemoved] = useState(null);
   const [restUntil, setRestUntil] = useState(() => activeSession(initial.state || { sessions: [] })?.restUntil || 0);
   const [restSeconds, setRestSeconds] = useState(90);
@@ -147,18 +152,15 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   }
   function chooseMachine(id, dose, exerciseId = selectedExerciseId) {
     setMachineId(id);
-    const previous = lastEquipmentSet(state, { machineId: id, exerciseId, day });
-    setInput({ weight: previous?.weight ?? 0, reps: previous && previous.reps >= dose.repMin && previous.reps <= dose.repMax ? previous.reps : dose.repMin || 10,
-      unit: previous?.unit || 'kg', note: '' });
+    setInput(equipmentPrefill(state, exerciseId, id, day, dose));
   }
   function openTarget(row) {
     const exerciseId = row.recommendedExerciseId;
-    setSelectedTargetId(row.target.id); chooseExercise(exerciseId, row.progress.prescription); setTab('next');
+    setReturnTargetId(row.target.id); setSelectedTargetId(row.target.id); chooseExercise(exerciseId, row.progress.prescription); setTab('next');
   }
   function chooseExercise(exerciseId, dose) {
     setSelectedExerciseId(exerciseId);
-    const machines = exerciseMachines(state, exerciseId);
-    const machine = machines[0];
+    const machine = lastExerciseMachine(state, exerciseId, day);
     chooseMachine(machine?.id || '', dose, exerciseId);
   }
   function removeSet(set) {
@@ -177,7 +179,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   if (!state) return <main className="flex-app"><p role="alert">{error}</p><button className="flex-primary" onClick={() => download(localStorage.getItem(FLEXIBLE_KEY) || '{}')}>Export data</button></main>;
 
   const session = activeSession(state);
-  const day = testDate || trainingDay(now, state.timeZone);
+  const day = testDate || currentTrainingDay(state, now);
   const rows = rankTargets(state, day, now.toISOString());
   const done = rows.filter(row => row.bucket === 'done');
   const choices = rows.filter(row => row.bucket === 'recommended');
@@ -185,15 +187,10 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const selectedRow = rows.find(row => row.target.id === selectedTargetId);
   const currentSets = session ? sessionSets(state, session.id) : [];
   const currentWorkingSets = currentSets.filter(set => set.kind === 'working').length;
-  const selectedSets = targetSets(state, selectedTargetId).filter(set => set.trainingDate === day);
+  const selectedSets = targetSets(state, selectedTargetId).filter(set => setTrainingDate(state, set) === day);
   const selectedMachine = state.machines.find(machine => machine.id === machineId);
   const selectedMachines = exerciseMachines(state, selectedExerciseId);
   const machineHistory = equipmentHistory(state, { machineId, exerciseId: selectedExerciseId, day, unit: input.unit });
-  const historyExercises = state.exercises.filter(exercise => !exercise.archived || state.sets.some(set => set.exerciseId === exercise.id)).sort(byName);
-  const historyExercise = historyExercises.find(exercise => exercise.id === historyExerciseId) || historyExercises[0];
-  const historyMachines = historyExercise ? exerciseHistoryMachines(state, historyExercise.id) : [];
-  const historyMachine = historyMachines.find(machine => machine.id === historyMachineId) || historyMachines[0];
-  const historyChart = historyMachine && historyExercise ? equipmentHistory(state, { machineId: historyMachine.id, exerciseId: historyExercise.id, day, unit: 'kg' }) : [];
   const previewMismatch = !state.production && session && Boolean(session.simulated) !== Boolean(testDate);
   const remainingRest = Math.max(0, Math.ceil((restUntil - now.getTime()) / 1000));
 
@@ -205,6 +202,13 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const todayCompleted = targetSummaries.filter(({ progress }) => progress.completedToday).length;
   const defaultDailyGoal = Math.max(1, Math.ceil(weeklyTotal / 3));
   const dailyGoal = appearance.goalDay === day && appearance.dailyGoal ? appearance.dailyGoal : defaultDailyGoal;
+  const starredIds = starsForDay(dailyStars, day);
+  function toggleStar(id) {
+    const next = toggleDailyStar(dailyStars, day, id);
+    try { localStorage.setItem(starKey, JSON.stringify(next)); setDailyStars(next); }
+    catch { setError('Could not save stars in this browser.'); }
+  }
+  const returnRow = rows.find(row => row.target.id === returnTargetId && row.exercises.some(exercise => exercise.id === selectedExerciseId) && exerciseMachines(state, selectedExerciseId).some(machine => machine.id === machineId));
   const currentExercise = state.exercises.find(item => item.id === selectedExerciseId) || selectedRow?.exercise;
   const isPlaying = tab === 'next' && Boolean(selectedRow);
   const style = appearanceStyle(appearance);
@@ -227,7 +231,8 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           <button className="flex-overview-progress flex-today-progress" aria-label={`Today: ${todayCompleted} of ${dailyGoal} target occasions. Adjust daily goal`} aria-expanded={editingGoal} onClick={() => { setGoalInput(String(dailyGoal)); setEditingGoal(value => !value); }}><span>Today</span><progress value={Math.min(todayCompleted, dailyGoal)} max={dailyGoal} aria-label="Today's target progress" /><strong>{todayCompleted}<small>/{dailyGoal}</small></strong></button>
           {editingGoal && <form className="flex-panel flex-goal-editor" onSubmit={event => { event.preventDefault(); updateAppearance({ goalDay: day, dailyGoal: Number(goalInput) }); setEditingGoal(false); }}><Field label="Today's goal"><input type="number" min="1" max="100" required value={goalInput} onChange={event => setGoalInput(event.target.value)} /></Field><p className="flex-muted">Default: {defaultDailyGoal} · one third of the weekly target, rounded up.</p><div className="flex-actions"><button className="flex-primary">Save</button><button type="button" className="flex-quiet" onClick={() => { updateAppearance({ goalDay: '', dailyGoal: null }); setEditingGoal(false); }}>Use default</button><button type="button" className="flex-quiet" onClick={() => setEditingGoal(false)}>Cancel</button></div></form>}
         </>}
-        {session && <div className="flex-toolbar"><span>{currentWorkingSets} {currentWorkingSets === 1 ? 'set' : 'sets'}</span><button className="flex-secondary" onClick={() => { if (commit(previous => finishFlexibleSession(previous))) { setSelectedTargetId(null); setRestUntil(0); } }}>Finish</button></div>}
+        {session && <div className="flex-toolbar"><span>{currentWorkingSets} {currentWorkingSets === 1 ? 'set' : 'sets'}</span><button className="flex-secondary" onClick={() => { if (commit(previous => finishFlexibleSession(previous))) { setSelectedTargetId(null); setReturnTargetId(null); setRestUntil(0); } }}>Finish</button></div>}
+        {!selectedRow && returnRow && <button className="flex-return-exercise" onClick={() => { setSelectedTargetId(returnRow.target.id); setTab('next'); }}><TrainingIcon name={exerciseGlyph(currentExercise)} /><span>Return to {currentExercise?.name || returnRow.target.name}</span><TrainingIcon name="arrow" /></button>}
         {previewMismatch && <p className="flex-error">Finish this session before changing the date.</p>}
         {selectedRow ? <section className="flex-panel flex-log-panel">
           <div className="flex-play-top"><button className="flex-quiet flex-play-back" onClick={() => setSelectedTargetId(null)}><TrainingIcon name="back" />Back</button><ExerciseInfoButton exercise={currentExercise} onClick={() => setGuideExercise(currentExercise)} /></div><div className="flex-play-name"><TrainingIcon name={exerciseGlyph(currentExercise)} /><h2>{currentExercise?.name || selectedRow.target.name}</h2></div>
@@ -253,12 +258,12 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           {selectedSets.length > 0 && <div className="flex-set-list">{selectedSets.map(set => <SetRow key={set.id} set={set} state={state} onRemove={removeSet} />)}</div>}
           {machineHistory.length > 0 && <details className="flex-details"><summary>History</summary>{[...machineHistory].reverse().slice(0, 12).map(set => <SetRow key={set.id} set={set} state={state} date />)}</details>}
         </section> : <>
-          {choices.length > 0 && <section aria-label="Recommended"><TargetCard row={choices[0]} featured onChoose={() => openTarget(choices[0])} />{choices.length > 1 && <><div className="flex-section-label"><h2>Also recommended</h2><span>{choices.length - 1} options</span></div><div className="flex-recommendation-grid" id="next-recommendations">{choices.slice(1, expandedRecommendations ? undefined : 7).map(row => <TargetCard key={row.target.id} row={row} tile onChoose={() => openTarget(row)} />)}</div>{choices.length > 7 && <button className="flex-more-options" aria-expanded={expandedRecommendations} aria-controls="next-recommendations" onClick={() => setExpandedRecommendations(value => !value)}>{expandedRecommendations ? 'Show fewer' : `${choices.length - 7} more options`}<TrainingIcon name="down" /></button>}</>}</section>}
+          {choices.length > 0 && <section aria-label="Recommended"><TargetCard starred={starredIds.includes(choices[0].target.id)} onToggleStar={() => toggleStar(choices[0].target.id)} row={choices[0]} featured onChoose={() => openTarget(choices[0])} />{choices.length > 1 && <><div className="flex-section-label"><h2>Also recommended</h2><span>{choices.length - 1} options</span></div><div className="flex-recommendation-grid" id="next-recommendations">{choices.slice(1, expandedRecommendations ? undefined : 7).map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} tile onChoose={() => openTarget(row)} />)}</div>{choices.length > 7 && <button className="flex-more-options" aria-expanded={expandedRecommendations} aria-controls="next-recommendations" onClick={() => setExpandedRecommendations(value => !value)}>{expandedRecommendations ? 'Show fewer' : `${choices.length - 7} more options`}<TrainingIcon name="down" /></button>}</>}</section>}
           {!rows.length && <p className="flex-empty">No linked exercises at this gym.</p>}
           {!choices.length && !otherOptions.length && done.length > 0 && <p className="flex-empty">Done for today.</p>}
         </>}
-        {otherOptions.length > 0 && !selectedRow && <details className="flex-details" open><summary>Other options ({otherOptions.length})</summary>{otherOptions.map(row => <TargetCard key={row.target.id} row={row} onChoose={() => openTarget(row)} />)}</details>}
-        {done.length > 0 && !selectedRow && <details className="flex-details"><summary>Done ({done.length})</summary>{done.map(row => <TargetCard key={row.target.id} row={row} onChoose={() => openTarget(row)} />)}</details>}
+        {otherOptions.length > 0 && !selectedRow && <details className="flex-details" open><summary>Other options ({otherOptions.length})</summary>{otherOptions.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />)}</details>}
+        {done.length > 0 && !selectedRow && <details className="flex-details"><summary>Done ({done.length})</summary>{done.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />)}</details>}
       </>}
       {tab === 'targets' && <>
         <div className="flex-overview-progress"><span>Rolling 7 days</span><progress value={weeklyCompleted} max={weeklyTotal || 1} aria-label="Weekly target progress" /><strong>{weeklyCompleted}<small>/{weeklyTotal}</small></strong></div>
@@ -272,16 +277,10 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
         })}</div>
       </>}
       {(tab === 'exercises' || tab === 'library') && <Library key={tab} state={state} commit={commit} kind={tab === 'exercises' ? 'exercise' : 'machine'} onGuide={setGuideExercise} headerActions={headerActions} />}
-      {tab === 'history' && <>
-        <div className="flex-grid">
-          <Field label="Exercise"><select value={historyExercise?.id || ''} onChange={event => { setHistoryExerciseId(event.target.value); setHistoryMachineId(''); }}>{historyExercises.map(exercise => <option value={exercise.id} key={exercise.id}>{exercise.name}</option>)}</select></Field>
-          <Field label="Equipment"><select value={historyMachine?.id || ''} onChange={event => setHistoryMachineId(event.target.value)}>{historyMachines.map(machine => <option value={machine.id} key={machine.id}>{machine.name}</option>)}</select></Field>
-        </div>
-        {historyMachine && historyExercise && <EquipmentProgress key={`${historyMachine.id}:${historyExercise.id}`} history={historyChart} unit="kg" />}
-        {[...state.sessions].reverse().map(item => { const sets = sessionSets(state, item.id).filter(set => set.machineId === historyMachine?.id && set.exerciseId === historyExercise?.id); if (!sets.length) return null; return <section className="flex-panel" key={item.id}><div className="flex-row"><h3>{item.trainingDate}</h3><span className="flex-muted">{sets.length} sets{!item.endedAt ? ' · Active' : ''}{item.simulated ? ' · Test' : ''}</span></div>{sets.map(set => <SetRow key={set.id} set={set} state={state} onRemove={removeSet} />)}</section>; })}
-      </>}
+      {tab === 'history' && <TrainingHistory state={state} day={day} onRemove={removeSet} />}
       {tab === 'settings' && <div className="flex-settings">
         <AppearanceSettings appearance={appearance} onChange={updateAppearance} />
+        <p className="flex-muted">Training day resets at {String(dayStartHour(state)).padStart(2, '0')}:00 · {state.timeZone}</p>
         {state.gyms.map(gym => <GymName key={gym.id} gym={gym} commit={commit} />)}
         {!state.production && <button className="flex-secondary" onClick={() => commit(previous => ({ ...previous, gyms: [...previous.gyms, { id: newId(), name: `Gym ${previous.gyms.length + 1}` }] }))}>+ Gym</button>}
         <button className="flex-secondary" onClick={() => download(state.production ? localStorage.getItem('fitness_notion_v1') || JSON.stringify(state) : JSON.stringify(state, null, 2))}>Export data</button>
@@ -308,7 +307,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   </div>;
 }
 
-function TargetCard({ row, onChoose, featured = false, tile = false }) {
+function TargetCard({ row, onChoose, featured = false, tile = false, starred, onToggleStar }) {
   const { target, progress } = row;
   const status = row.finished_today ? NEXT_REASONS.FINISHED_TODAY : row.rolling_target_met ? NEXT_REASONS.TARGET_MET
     : row.reasonCodes.includes('RECENT_OVERLAP') ? NEXT_REASONS.RECENT_OVERLAP
@@ -317,8 +316,8 @@ function TargetCard({ row, onChoose, featured = false, tile = false }) {
   const count = <span className="flex-week-count" aria-label={`${progress.occasions} of ${target.frequency} training days in 7 days`}>{progress.occasions}/{target.frequency}</span>;
   const detail = <span className="flex-card-dose">{prescription(progress.prescription)}</span>;
   const note = `${progress.todaySets > 0 ? `${progress.todaySets}/${progress.prescription.recommendedSets || progress.requiredSets} sets` : ''}${status ? `${progress.todaySets > 0 ? ' · ' : ''}${status}` : ''}`;
-  if (tile) return <button type="button" className="flex-rec-tile" aria-label={`${action} ${target.name}${note ? ` · ${note}` : ''}`} onClick={onChoose}><TrainingIcon name={exerciseGlyph(row.exercise)} /><h3>{target.name}</h3>{note && <span className="flex-tile-note">{note}</span>}<span className="flex-tile-footer">{detail}{count}</span></button>;
-  return <article className={`flex-target-card${featured ? ' flex-featured-choice' : ''}`} aria-label={target.name}><TrainingIcon className="flex-card-icon" name={exerciseGlyph(row.exercise)} /><div className="flex-target-content">{featured && <span className="flex-choice-label">{progress.todaySets && !row.finished_today ? 'Continue' : 'Good next choice'}</span>}<h3>{target.name}</h3><p className="flex-prescription">{detail}{featured && <><span className="flex-dose-separator" aria-hidden="true"> · </span>{count}</>}{note && <span> · {note}</span>}</p></div>{!featured && count}<button className="flex-secondary" aria-label={`${action} ${target.name}`} onClick={onChoose}>{featured ? <TrainingIcon name="arrow" /> : action}</button></article>;
+  if (tile) return <DailyStar name={target.name} starred={starred} onToggle={onToggleStar} tile><button type="button" className="flex-rec-tile" aria-label={`${action} ${target.name}${note ? ` · ${note}` : ''}`} onClick={onChoose}><TrainingIcon name={exerciseGlyph(row.exercise)} /><h3>{target.name}</h3>{note && <span className="flex-tile-note">{note}</span>}<span className="flex-tile-footer">{detail}{count}</span></button></DailyStar>;
+  return <DailyStar name={target.name} starred={starred} onToggle={onToggleStar}><article className={`flex-target-card${featured ? ' flex-featured-choice' : ''}`} aria-label={target.name}><TrainingIcon className="flex-card-icon" name={exerciseGlyph(row.exercise)} /><div className="flex-target-content">{featured && <span className="flex-choice-label">{progress.todaySets && !row.finished_today ? 'Continue' : 'Good next choice'}</span>}<h3>{target.name}</h3><p className="flex-prescription">{detail}{featured && <><span className="flex-dose-separator" aria-hidden="true"> · </span>{count}</>}{note && <span> · {note}</span>}</p></div>{!featured && count}<button className="flex-secondary" aria-label={`${action} ${target.name}`} onClick={onChoose}>{featured ? <TrainingIcon name="arrow" /> : action}</button></article></DailyStar>;
 }
 
 function AppearanceSettings({ appearance, onChange }) {
@@ -352,7 +351,7 @@ function RankingSettings({ state, commit }) {
 function RankingOverview({ config }) {
   return <section className="flex-ranking-overview" aria-label="How Next is ordered">
     <h3>How Next is ordered</h3>
-    <p>Weekly progress uses the last seven local calendar days. Recovery uses elapsed hours. Choices need linked equipment at this gym.</p>
+    <p>Weekly progress uses the last seven training days, with the reset time shown in Settings. Recovery uses elapsed hours. Choices need linked equipment at this gym.</p>
     <dl>
       <div><dt>1. Group</dt><dd><strong>Recommended</strong> — due, with suitable recovery.<br /><strong>Other options</strong> — due, with more muscle overlap, or optional.<br /><strong>Done</strong> — today’s sets completed or rolling target met.</dd></div>
       <div><dt>2. Score within each group</dt><dd>More weekly work remaining and higher personal priority raise the score. Overlapping working sets lower it, fading gradually over the target’s recovery window (48 hours by default). Primary muscles count more than supporting muscles.</dd></div>
@@ -367,7 +366,7 @@ function RankingOverview({ config }) {
         <div><dt>Saved weights</dt><dd>Primary muscles: 1; supporting: {config.supportingWeight}. Overlap is normalized, capped at one equivalent set per logged set. Fatigue penalty: {config.fatiguePenaltyPerSet}.</dd></div>
         <div><dt>Saved adjustments</dt><dd>Continue: +{config.continuationBonus}. Isolation: up to −{config.isolationPenalty}, scaled by overlap.</dd></div>
         <div><dt>Recommended thresholds</dt><dd>Fatigue factor ≥ {config.recommendedFatigueThreshold}. Group comes before score; optional targets stay in Other options. Scores are compared to two decimal places before the alternation tie-breaker.</dd></div>
-        <div><dt>Completion &amp; fatigue</dt><dd>An occasion counts once per target per local day after its qualifying sets are completed, combining setups and sessions. Recommended sets can be higher. Partial sets affect fatigue without earning an occasion. Shared muscles alone never award another target credit. Weight and reps don’t affect ranking.</dd></div>
+        <div><dt>Completion &amp; fatigue</dt><dd>An occasion counts once per target per training day after its qualifying sets are completed, combining setups and sessions. Recommended sets can be higher. Partial sets affect fatigue without earning an occasion. Shared muscles alone never award another target credit. Weight and reps don’t affect ranking.</dd></div>
       </dl>
       <p>For targets with alternatives, the best-ranked eligible exercise determines the card’s position. These factors are adjustable estimates, not measurements of recovery.</p>
     </details>

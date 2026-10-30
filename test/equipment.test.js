@@ -138,3 +138,23 @@ test('equipment links reject missing IDs instead of creating orphan relationship
   assert.throws(() => setMachineExercises(state, machines[0].id, ['missing-exercise'], newId), /valid exercises/);
   assert.throws(() => setExerciseMachines(state, exercise.id, ['missing-profile'], newId), /valid exercise/);
 });
+
+test('Play remembers the last linked machine and exact reps even outside the target range', async () => {
+  const { state, exercise, machines, log, lastExerciseMachine, equipmentPrefill, exerciseMachines } = await setup();
+  const next = log(log(state, machines[0].id, { now: '2026-10-29T18:00:00Z' }), machines[2].id, { weight: 17, reps: 7, unit: 'lbs' });
+  const before = JSON.stringify(next);
+  assert.equal(lastExerciseMachine(next, exercise.id, '2026-10-29').id, machines[2].id);
+  assert.deepEqual(equipmentPrefill(next, exercise.id, machines[2].id, '2026-10-29', { repMin: 12, repMax: 20 }), { weight: 17, reps: 7, unit: 'lbs', note: '' });
+  assert.equal(equipmentPrefill(next, exercise.id, machines[0].id, '2026-10-29', { repMin: 12 }).weight, 9);
+  assert.deepEqual(exerciseMachines(next, exercise.id).map(item => item.id), machines.map(item => item.id));
+  assert.equal(JSON.stringify(next), before);
+});
+
+test('Play does not select unlinked, other-gym or future equipment and safely defaults new pairs', async () => {
+  const { state, exercise, machines, log, lastExerciseMachine, equipmentPrefill, setExerciseMachines, newId } = await setup();
+  let next = log(state, machines[2].id, { now: '2026-10-29T18:00:00Z' });
+  next = setExerciseMachines(next, exercise.id, machines.slice(0, 2).map(item => item.id), newId);
+  assert.equal(lastExerciseMachine(next, exercise.id, '2026-10-29').id, machines[0].id);
+  const fresh = { ...next, sets: [], demoHistory: [] };
+  assert.deepEqual(equipmentPrefill(fresh, exercise.id, machines[0].id, '2026-10-29', { repMin: 12 }), { weight: 0, reps: 12, unit: 'kg', note: '' });
+});

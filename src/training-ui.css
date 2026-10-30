@@ -197,3 +197,36 @@ body:has(.training-ui) { background: #0c1421; }
   .training-ui .flex-exercise-list .flex-list-row { gap: 14px; }
   .training-ui .flex-header select { max-width: 105px; }
 }
+
+.training-ui .flex-return-exercise { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 13px 15px; margin-bottom: 16px; border: 1px solid var(--featured-line); border-radius: 14px; background: var(--soft); color: var(--accent); font-size: 14px; }
+.training-ui .flex-return-exercise > span { flex: 1; }
+.training-ui .flex-star-card { position: relative; touch-action: pan-y; -webkit-touch-callout: none; user-select: none; }
+.training-ui .flex-star-card.is-tile { min-width: 0; display: flex; }
+.training-ui .flex-star-card.is-tile > .flex-rec-tile { flex: 1; width: 100%; }
+.training-ui .flex-star-toggle { position: absolute; right: 5px; top: 3px; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 8px; background: transparent; color: var(--progress); border-radius: 50%; opacity: 0; }
+.training-ui .flex-star-toggle svg { width: 19px; height: 19px; }
+.training-ui .flex-star-card:hover .flex-star-toggle, .training-ui .flex-star-card:focus-within .flex-star-toggle, .training-ui .flex-star-card.is-starred .flex-star-toggle { opacity: 1; }
+.training-ui .flex-star-card.is-starred > .flex-rec-tile, .training-ui .flex-star-card.is-starred > .flex-target-card { background: color-mix(in srgb, var(--progress) 10%, var(--surface)); border-color: color-mix(in srgb, var(--progress) 65%, var(--line)); }
+.training-ui .flex-star-card.is-starred .flex-card-icon, .training-ui .flex-star-card.is-starred .flex-rec-tile > .training-icon { color: var(--progress); }
+.training-ui .flex-star-card > .flex-target-card { padding-top: 24px; }
+.training-ui .flex-history-views { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 18px; }
+.training-ui .flex-history-views button { flex: 1; padding: 10px; border-radius: 10px; background: transparent; color: var(--muted); font-size: 14px; }
+.training-ui .flex-history-views button[aria-pressed='true'] { background: var(--selected); color: var(--accent); }
+.training-ui .flex-history-filters { margin-top: 0; padding-top: 0; border-top: 0; margin-bottom: 20px; }
+.training-ui .flex-journal-day { margin: 22px 0 30px; }
+.training-ui .flex-journal-day h2 { font-size: 16px; letter-spacing: -.015em; }
+.training-ui .flex-journal-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 10px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.training-ui .flex-journal-table th { text-align: right; font-size: 11px; font-weight: 500; color: var(--muted); padding-bottom: 7px; }
+.training-ui .flex-journal-table th:first-child { width: 55%; text-align: left; }
+.training-ui .flex-journal-table th:nth-child(2) { width: 22%; }
+.training-ui .flex-journal-table th:nth-child(3) { width: 16%; }
+.training-ui .flex-journal-table th:last-child { width: 7%; }
+.training-ui .flex-journal-table td { border-top: 1px solid var(--line); padding: 9px 0; text-align: right; vertical-align: middle; }
+.training-ui .flex-journal-table td:first-child { text-align: left; padding-right: 7px; overflow-wrap: anywhere; }
+.training-ui .flex-journal-table td:first-child small { display: block; margin-top: 2px; }
+.training-ui .flex-journal-table small { font-size: 10px; color: var(--muted); }
+.training-ui .flex-journal-table .flex-quiet { min-height: 36px; padding: 4px; color: var(--muted); }
+.training-ui .flex-history-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 23px; }
+.training-ui .flex-history-kpis > div { display: flex; flex-direction: column; gap: 7px; padding: 15px 9px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.training-ui .flex-history-kpis strong { color: var(--progress); font-size: 25px; font-weight: 500; }
+.training-ui .flex-history-kpis span { color: var(--muted); font-size: 11px; }

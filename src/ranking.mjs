@@ -1,3 +1,4 @@
+import { projectSetDay } from './trainingCalendar.mjs';
 // Configurable ordering heuristics, not measurements of physiological recovery.
 export const DEFAULT_RANKING = Object.freeze({
   supportingWeight: 0.35,
@@ -41,7 +42,7 @@ export const NEXT_REASONS = Object.freeze({
 
 export function uniqueWorkingSets(state, day, now) {
   const seen = new Set();
-  return state.sets.filter(set => {
+  return state.sets.map(set => projectSetDay(state, set)).filter(set => {
     if (set.kind !== 'working' || set.demo || set.trainingDate > day || (now && Date.parse(set.performedAt) > Date.parse(now)) || seen.has(set.id)) return false;
     seen.add(set.id);
     return true;

@@ -1,5 +1,4 @@
 import React from 'react';
-import { convertWeight } from './workout.mjs';
 
 // Reuse the original play screen's card and adjustment layout.
 export default function WorkoutValues({ input, onChange, perSide = false }) {
@@ -19,7 +18,7 @@ export default function WorkoutValues({ input, onChange, perSide = false }) {
           style={size(input.weight)} className="workout-value-input" />
         <div className="workout-value-unit"><div className="weight-unit-toggle" role="group" aria-label="Weight unit">
           {['kg', 'lbs'].map(unit => <button type="button" key={unit} aria-pressed={input.unit === unit}
-            onClick={() => onChange(previous => ({ ...previous, weight: convertWeight(previous.weight,previous.unit,unit), unit }))}>{unit}</button>)}
+            onClick={() => onChange(previous => ({ ...previous, unit }))}>{unit}</button>)}
         </div></div>
       </div>
       <div className="workout-adjustments" role="group" aria-label="Adjust load">

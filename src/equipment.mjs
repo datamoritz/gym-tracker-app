@@ -1,4 +1,5 @@
 import { convertWeight } from './workout.mjs';
+import { projectSetDay, setTrainingDate } from './trainingCalendar.mjs';
 export const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }) || a.id.localeCompare(b.id);
 
 export const machineExerciseIds = (state, machineId) => (state.equipmentLinks || [])
@@ -84,6 +85,7 @@ export function installLateralExample(input, id, now = new Date()) {
 
 export function equipmentHistory(state, { exerciseId, machineId, day = '9999-12-31', unit = 'kg' }) {
   return [...state.sets, ...(state.demoHistory || [])]
+    .map(set => projectSetDay(state, set))
     .filter(set => set.exerciseId === exerciseId && set.machineId === machineId && set.kind === 'working' && set.trainingDate <= day)
     .sort((a, b) => a.trainingDate.localeCompare(b.trainingDate) || a.performedAt.localeCompare(b.performedAt))
     .map(set => ({ ...set, weight: convertWeight(set.weight, set.unit, unit), unit }));
@@ -93,4 +95,18 @@ export function lastEquipmentSet(state, selection) {
   const history = equipmentHistory(state, selection);
   const last = history.filter(set => !set.demo).at(-1) || history.at(-1) || null;
   return last && !selection.unit ? [...state.sets, ...(state.demoHistory || [])].find(set => set.id === last.id) : last;
+}
+
+// Select the last used linked profile without changing alphabetical menu order.
+export function lastExerciseMachine(state, exerciseId, day) {
+  const machines = exerciseMachines(state, exerciseId);
+  const last = state.sets.filter(set => set.exerciseId === exerciseId && set.kind === 'working' && !set.demo &&
+    setTrainingDate(state, set) <= day && machines.some(machine => machine.id === set.machineId))
+    .sort((a, b) => Date.parse(a.performedAt) - Date.parse(b.performedAt)).at(-1);
+  return machines.find(machine => machine.id === last?.machineId) || machines[0] || null;
+}
+
+export function equipmentPrefill(state, exerciseId, machineId, day, dose) {
+  const previous = lastEquipmentSet(state, { exerciseId, machineId, day });
+  return { weight: previous?.weight ?? 0, reps: previous?.reps ?? dose.repMin ?? 10, unit: previous?.unit || 'kg', note: '' };
 }

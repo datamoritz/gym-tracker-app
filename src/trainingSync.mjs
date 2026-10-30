@@ -6,7 +6,7 @@ const fields = {
   targets: ['id','name','exerciseIds','frequency','requiredSets','recommendedSets','maxSets','repMin','repMax','perSide','prescriptions','windowDays','spacingDays','priority','active','optional','order','guidance'],
   sessions: ['id','gymId','startedAt','trainingDate','endedAt','restUntil'],
   sets: ['id','activityId','activityIds','sessionId','exerciseId','machineId','gymId','exerciseName','machineName','weight','reps','perSide','unit','kind','note','trainingDate','performedAt','source'],
-  settings: ['id','name','timeZone','selectedGymId','rankingConfig']
+  settings: ['id','name','timeZone','trainingDayStartHour','selectedGymId','rankingConfig']
 };
 export function equal(a, b) {
   if (a === b) return true;
@@ -20,7 +20,7 @@ export function equal(a, b) {
 export function recordsFor(state, entity) {
   if (!state) return [];
   if (entity === 'assignments') return state.exercises.map(exercise => ({ id: exercise.id, machineIds: (state.equipmentLinks || []).filter(link => !link.archived && link.exerciseId === exercise.id).map(link => link.machineId).sort() }));
-  const records = entity === 'settings' ? [{ id: state.settingsId, name: 'Preferences', timeZone: state.timeZone, selectedGymId: state.selectedGymId, rankingConfig: state.rankingConfig }] : state[entity] || [];
+  const records = entity === 'settings' ? [{ id: state.settingsId, name: 'Preferences', timeZone: state.timeZone, trainingDayStartHour: state.trainingDayStartHour, selectedGymId: state.selectedGymId, rankingConfig: state.rankingConfig }] : state[entity] || [];
   return records.map(record => ({ ...Object.fromEntries(fields[entity].filter(key => record[key] !== undefined).map(key => [key, record[key]])),
     ...(entity === 'sets' ? { deleted: false, activities: (state.activities || []).filter(activity => [record.activityId, ...(record.activityIds || [])].includes(activity.id)) } : {}) }));
 }
