@@ -140,6 +140,12 @@ body:has(.training-ui) { background: #0c1421; }
 .training-ui.is-playing .flex-rest-timer { bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + var(--menu-lift)); }
 .training-ui .flex-rest-time { font-size: 37px; font-weight: 650; }
 .training-ui .flex-rest-actions button { padding-inline: 12px; font-weight: 500; }
+.training-ui .flex-manual-rest { margin-top: 12px; }
+.training-guide .exercise-guide-rest { flex-shrink: 0; padding: 10px 14px; border-top: 1px solid var(--line); }
+.training-guide .exercise-guide-rest .flex-rest-timer { position: static; transform: none; width: 100%; max-width: none; padding: 12px 16px; margin: 0; }
+.training-guide .flex-rest-time { font-size: 32px; }
+.training-guide .flex-rest-actions button { min-height: 44px; padding: 8px 12px; border: 1px solid #ffffff4d; border-radius: 12px; color: #fff; background: #ffffff30; }
+.training-guide .flex-rest-actions .flex-rest-skip { background: #fff; color: #de621d; }
 .training-ui.theme-carbon .flex-featured-choice, .training-ui.theme-carbon .flex-rec-tile { border-radius: 9px; }
 .training-ui.theme-carbon .flex-featured-choice { box-shadow: inset 2px 0 var(--accent); }
 .training-ui.theme-carbon .flex-tabs { border-radius: 13px; }

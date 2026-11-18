@@ -11,6 +11,9 @@ import WorkoutValues from './WorkoutValues.jsx';
 import EquipmentProgress from './EquipmentProgress.jsx';
 import TrainingHistory from './TrainingHistory.jsx';
 import DailyStar from './DailyStar.jsx';
+import useRestTimer from './useRestTimer.jsx';
+import RestTimer from './RestTimer.jsx';
+import { nextCompletionGroups } from './nextGroups.mjs';
 import { readDailyStars, starsForDay, toggleDailyStar } from './dailyStars.mjs';
 import { currentTrainingDay, dayStartHour, setTrainingDate } from './trainingCalendar.mjs';
 import EquipmentAssignments from './EquipmentAssignments.jsx';
@@ -113,7 +116,8 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const starKey = initial.state?.production ? 'fitness_daily_stars_v1' : 'fitness_preview_stars_v1';
   const [dailyStars, setDailyStars] = useState(() => { try { return readDailyStars(localStorage, starKey); } catch { return {}; } });
   const [removed, setRemoved] = useState(null);
-  const [restUntil, setRestUntil] = useState(() => activeSession(initial.state || { sessions: [] })?.restUntil || 0);
+  const rest = useRestTimer({ storageKey: initial.state?.production ? 'fitness_rest_timer_v1' : 'fitness_preview_rest_timer_v1',
+    initialDeadline: activeSession(initial.state || { sessions: [] })?.restUntil || 0, onError: setError });
   const [restSeconds, setRestSeconds] = useState(90);
   const [guideExercise, setGuideExercise] = useState(null);
   const [deviceLink, setDeviceLink] = useState('');
@@ -132,7 +136,6 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   useEffect(() => {
     if (initialState && initialState !== stateRef.current) {
       stateRef.current = initialState; setState(initialState);
-      setRestUntil(activeSession(initialState)?.restUntil || 0);
     }
   }, [initialState]);
 
@@ -172,9 +175,9 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   }
   function updateRest(deadline) {
     const current = activeSession(stateRef.current);
-    if (current && commit(previous => ({ ...previous, sessions: previous.sessions.map(item => item.id === current.id ? { ...item, restUntil: deadline } : item) }))) {
-      setRestUntil(deadline); setNow(new Date());
-    }
+    if (deadline) rest.start(deadline); else rest.clear();
+    if (current) commit(previous => ({ ...previous, sessions: previous.sessions.map(item => item.id === current.id ? { ...item, restUntil: deadline } : item) }));
+    setNow(new Date());
   }
   if (!state) return <main className="flex-app"><p role="alert">{error}</p><button className="flex-primary" onClick={() => download(localStorage.getItem(FLEXIBLE_KEY) || '{}')}>Export data</button></main>;
 
@@ -182,6 +185,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const day = testDate || currentTrainingDay(state, now);
   const rows = rankTargets(state, day, now.toISOString());
   const done = rows.filter(row => row.bucket === 'done');
+  const { doneToday, doneWeekly } = nextCompletionGroups(rows);
   const choices = rows.filter(row => row.bucket === 'recommended');
   const otherOptions = rows.filter(row => row.bucket === 'other');
   const selectedRow = rows.find(row => row.target.id === selectedTargetId);
@@ -192,7 +196,6 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const selectedMachines = exerciseMachines(state, selectedExerciseId);
   const machineHistory = equipmentHistory(state, { machineId, exerciseId: selectedExerciseId, day, unit: input.unit });
   const previewMismatch = !state.production && session && Boolean(session.simulated) !== Boolean(testDate);
-  const remainingRest = Math.max(0, Math.ceil((restUntil - now.getTime()) / 1000));
 
   // These summaries only display the existing targetProgress results. They never
   // modify target credit, ranking, sessions, or the synchronized training state.
@@ -214,7 +217,8 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
   const style = appearanceStyle(appearance);
   const pageTitle = { next: 'Training', targets: 'Targets', exercises: 'Exercises', library: 'Machines', history: 'History', settings: 'Settings' }[tab];
 
-  return <div className={`flex-app training-ui theme-${appearance.theme}${isPlaying ? ' is-playing' : ''}${remainingRest > 0 ? ' has-rest-timer' : ''}`} style={style}>
+  const timerView = <RestTimer timer={rest} onReduce={() => updateRest(Math.max(Date.now() + 500, rest.deadline - 15000))} onDismiss={() => updateRest(0)} />;
+  return <div className={`flex-app training-ui theme-${appearance.theme}${isPlaying ? ' is-playing' : ''}${rest.visible ? ' has-rest-timer' : ''}`} style={style}>
     {!isPlaying && <header className="flex-header"><div><h1>{pageTitle}</h1>{tab === 'next' && <span className="flex-gym-location"><TrainingIcon name="pin" />{labelFor(state.gyms, state.selectedGymId)}</span>}</div><div className="flex-row-actions">
       {state.gyms.length > 1 && <select aria-label="Gym" value={state.selectedGymId} disabled={Boolean(session)} onChange={event => { const id = event.target.value; commit(previous => ({ ...previous, selectedGymId: id })); setSelectedTargetId(null); }}>{state.gyms.map(gym => <option key={gym.id} value={gym.id}>{gym.name}</option>)}</select>}
       {!state.testingScope && tab === 'targets' && <button className="flex-secondary flex-header-add" onClick={() => setEditingTarget(null)}>+ Target</button>}
@@ -231,7 +235,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           <button className="flex-overview-progress flex-today-progress" aria-label={`Today: ${todayCompleted} of ${dailyGoal} target occasions. Adjust daily goal`} aria-expanded={editingGoal} onClick={() => { setGoalInput(String(dailyGoal)); setEditingGoal(value => !value); }}><span>Today</span><progress value={Math.min(todayCompleted, dailyGoal)} max={dailyGoal} aria-label="Today's target progress" /><strong>{todayCompleted}<small>/{dailyGoal}</small></strong></button>
           {editingGoal && <form className="flex-panel flex-goal-editor" onSubmit={event => { event.preventDefault(); updateAppearance({ goalDay: day, dailyGoal: Number(goalInput) }); setEditingGoal(false); }}><Field label="Today's goal"><input type="number" min="1" max="100" required value={goalInput} onChange={event => setGoalInput(event.target.value)} /></Field><p className="flex-muted">Default: {defaultDailyGoal} · one third of the weekly target, rounded up.</p><div className="flex-actions"><button className="flex-primary">Save</button><button type="button" className="flex-quiet" onClick={() => { updateAppearance({ goalDay: '', dailyGoal: null }); setEditingGoal(false); }}>Use default</button><button type="button" className="flex-quiet" onClick={() => setEditingGoal(false)}>Cancel</button></div></form>}
         </>}
-        {session && <div className="flex-toolbar"><span>{currentWorkingSets} {currentWorkingSets === 1 ? 'set' : 'sets'}</span><button className="flex-secondary" onClick={() => { if (commit(previous => finishFlexibleSession(previous))) { setSelectedTargetId(null); setReturnTargetId(null); setRestUntil(0); } }}>Finish</button></div>}
+        {session && <div className="flex-toolbar"><span>{currentWorkingSets} {currentWorkingSets === 1 ? 'set' : 'sets'}</span><button className="flex-secondary" onClick={() => { if (commit(previous => finishFlexibleSession(previous))) { setSelectedTargetId(null); setReturnTargetId(null); } }}>Finish</button></div>}
         {!selectedRow && returnRow && <button className="flex-return-exercise" onClick={() => { setSelectedTargetId(returnRow.target.id); setTab('next'); }}><TrainingIcon name={exerciseGlyph(currentExercise)} /><span>Return to {currentExercise?.name || returnRow.target.name}</span><TrainingIcon name="arrow" /></button>}
         {previewMismatch && <p className="flex-error">Finish this session before changing the date.</p>}
         {selectedRow ? <section className="flex-panel flex-log-panel">
@@ -243,17 +247,17 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           {!selectedMachines.length && <p className="flex-muted">No machine linked.</p>}
           {selectedMachine && <form onSubmit={event => {
             event.preventDefault(); if (previewMismatch) return;
-            const restDeadline = Date.now() + restSeconds * 1000;
+            const restDeadline = restSeconds > 0 ? Date.now() + restSeconds * 1000 : 0;
             if (commit(previous => {
               const logged = addFlexibleSet(startFlexibleSession(previous, day, now.toISOString(), Boolean(testDate)), { ...input, targetId: selectedTargetId, exerciseId: selectedExerciseId, machineId, day, now: now.toISOString() });
               const active = activeSession(logged);
               return { ...logged, sessions: logged.sessions.map(item => item.id === active.id ? { ...item, restUntil: restDeadline } : item) };
-            })) { setInput(previous => ({ ...previous, note: '' })); setRestUntil(restDeadline); setNow(new Date()); }
+            })) { setInput(previous => ({ ...previous, note: '' })); rest.start(restDeadline); setNow(new Date()); }
           }}>
             <WorkoutValues input={input} onChange={setInput} perSide={selectedRow.progress.prescription.perSide} />
             <div className="flex-actions flex-play-actions"><button className="flex-log-button" disabled={previewMismatch}>{`Log set ${selectedRow.progress.todaySets + 1}${selectedRow.progress.todaySets < (selectedRow.progress.prescription.recommendedSets || selectedRow.progress.requiredSets) ? ` / ${selectedRow.progress.prescription.recommendedSets || selectedRow.progress.requiredSets}` : ''}`}</button><button type="button" className="flex-primary" onClick={() => setSelectedTargetId(null)}>{selectedRow.progress.completedToday ? 'Done' : 'Next'}</button></div>
             <EquipmentProgress key={`${selectedExerciseId}:${machineId}`} history={machineHistory} unit={input.unit} />
-            <details className="flex-details"><summary>More</summary><div className="flex-grid"><Field label="Note"><input value={input.note} onChange={event => setInput(previous => ({ ...previous, note: event.target.value }))} /></Field><Field label="Rest (seconds)"><input type="number" min="0" max="600" value={restSeconds} onChange={event => setRestSeconds(Math.min(600, Math.max(0, Number(event.target.value))))} /></Field></div></details>
+            <details className="flex-details"><summary>More</summary><div className="flex-grid"><Field label="Note"><input value={input.note} onChange={event => setInput(previous => ({ ...previous, note: event.target.value }))} /></Field><Field label="Rest (seconds)"><input type="number" min="0" max="600" value={restSeconds} onChange={event => setRestSeconds(Math.min(600, Math.max(0, Number(event.target.value))))} /></Field></div><button type="button" className="flex-secondary flex-manual-rest" onClick={() => updateRest(restSeconds > 0 ? Date.now() + restSeconds * 1000 : 0)}>Start timer</button></details>
           </form>}
           {selectedSets.length > 0 && <div className="flex-set-list">{selectedSets.map(set => <SetRow key={set.id} set={set} state={state} onRemove={removeSet} />)}</div>}
           {machineHistory.length > 0 && <details className="flex-details"><summary>History</summary>{[...machineHistory].reverse().slice(0, 12).map(set => <SetRow key={set.id} set={set} state={state} date />)}</details>}
@@ -262,8 +266,9 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           {!rows.length && <p className="flex-empty">No linked exercises at this gym.</p>}
           {!choices.length && !otherOptions.length && done.length > 0 && <p className="flex-empty">Done for today.</p>}
         </>}
+        {!selectedRow && <details className="flex-details flex-done-today" open={doneToday.length > 0}><summary>Done Today ({doneToday.length})</summary>{doneToday.length ? doneToday.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />) : <p className="flex-muted">No exercises finished today.</p>}</details>}
         {otherOptions.length > 0 && !selectedRow && <details className="flex-details" open><summary>Other options ({otherOptions.length})</summary>{otherOptions.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />)}</details>}
-        {done.length > 0 && !selectedRow && <details className="flex-details"><summary>Done ({done.length})</summary>{done.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />)}</details>}
+        {doneWeekly.length > 0 && !selectedRow && <details className="flex-details"><summary>Done ({doneWeekly.length})</summary>{doneWeekly.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />)}</details>}
       </>}
       {tab === 'targets' && <>
         <div className="flex-overview-progress"><span>Rolling 7 days</span><progress value={weeklyCompleted} max={weeklyTotal || 1} aria-label="Weekly target progress" /><strong>{weeklyCompleted}<small>/{weeklyTotal}</small></strong></div>
@@ -280,6 +285,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
       {tab === 'history' && <TrainingHistory state={state} day={day} onRemove={removeSet} />}
       {tab === 'settings' && <div className="flex-settings">
         <AppearanceSettings appearance={appearance} onChange={updateAppearance} />
+        <button className="flex-secondary" onClick={rest.testSound}>Test timer sound</button>
         <p className="flex-muted">Training day resets at {String(dayStartHour(state)).padStart(2, '0')}:00 · {state.timeZone}</p>
         {state.gyms.map(gym => <GymName key={gym.id} gym={gym} commit={commit} />)}
         {!state.production && <button className="flex-secondary" onClick={() => commit(previous => ({ ...previous, gyms: [...previous.gyms, { id: newId(), name: `Gym ${previous.gyms.length + 1}` }] }))}>+ Gym</button>}
@@ -299,11 +305,8 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
       </div>}
     </main>
     {state.production && syncStatus !== 'Saved' && <div className="flex-sync-status" role="status">{syncStatus}{syncError && <button className="flex-quiet" onClick={onSync}>Retry</button>}</div>}
-    {guideExercise && <ExerciseGuide exercise={guideExercise} library={state.exercises} notionAvailable={Boolean(state.production)} appearanceStyle={style} onClose={() => setGuideExercise(null)} />}
-    {remainingRest > 0 && <aside className="flex-rest-timer" aria-label="Rest timer">
-      <div><span className="flex-rest-label">Rest</span><span className="flex-rest-time" role="timer">{Math.floor(remainingRest / 60)}:{String(remainingRest % 60).padStart(2, '0')}</span></div>
-      <div className="flex-rest-actions"><button type="button" aria-label="Reduce rest by 15 seconds" onClick={() => updateRest(Math.max(Date.now() + 500, restUntil - 15000))}>-15s</button><button type="button" className="flex-rest-skip" onClick={() => updateRest(0)}>Skip</button></div>
-    </aside>}
+    {guideExercise && <ExerciseGuide exercise={guideExercise} library={state.exercises} notionAvailable={Boolean(state.production)} appearanceStyle={style} onClose={() => setGuideExercise(null)} footer={rest.visible ? timerView : null} />}
+    {!guideExercise && timerView}
   </div>;
 }
 
@@ -353,7 +356,7 @@ function RankingOverview({ config }) {
     <h3>How Next is ordered</h3>
     <p>Weekly progress uses the last seven training days, with the reset time shown in Settings. Recovery uses elapsed hours. Choices need linked equipment at this gym.</p>
     <dl>
-      <div><dt>1. Group</dt><dd><strong>Recommended</strong> — due, with suitable recovery, plus larger exercises during the opening phase.<br /><strong>Other options</strong> — other due exercises with more muscle overlap, or optional.<br /><strong>Done</strong> — today’s sets completed or rolling target met.</dd></div>
+      <div><dt>1. Group</dt><dd><strong>Recommended</strong> — due, with suitable recovery, plus larger exercises during the opening phase.<br /><strong>Other options</strong> — other due exercises with more muscle overlap, or optional.<br /><strong>Done Today</strong> — today’s qualifying sets completed.<br /><strong>Done</strong> — rolling weekly target met. A target can appear in both completed groups.</dd></div>
       <div><dt>2. Score within each group</dt><dd>More weekly work remaining and higher personal priority raise the score. Overlapping working sets lower it, fading gradually over the target’s recovery window (48 hours by default). Primary muscles count more than supporting muscles.</dd></div>
       <div><dt>3. Start with two larger exercises</dt><dd>Due compound exercises stay in Recommended and get an opening boost until two different compound targets qualify today. Recovery still lowers their scores and recent muscle work stays visible; it does not hide all larger options below core. Sets can combine across machines and sessions; two machines for one target count once. The preference resets with the training day.</dd></div>
       <div><dt>4. Small adjustments</dt><dd>Unfinished sets today get a continuation boost. Isolation gets a small penalty while a suitable, due compound of equal or higher priority needs those muscles. Near-equal scores favor different primary muscles from your last exercise; further ties keep plan order.</dd></div>

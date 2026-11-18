@@ -29,7 +29,7 @@ function GuideText({ text }) {
   ));
 }
 
-export default function ExerciseGuide({ exercise, library, notionAvailable, appearanceStyle, onClose }) {
+export default function ExerciseGuide({ exercise, library, notionAvailable, appearanceStyle, onClose, footer }) {
   const libraryItem = findExerciseGuide(exercise, library);
   const [guide, setGuide] = useState(libraryItem);
   const [loading, setLoading] = useState(notionAvailable);
@@ -136,6 +136,7 @@ export default function ExerciseGuide({ exercise, library, notionAvailable, appe
           <span><strong>Further information</strong><span>{new URL(sourceUrl).hostname.replace(/^www\./, '')}</span></span><span aria-hidden="true">↗</span>
         </a>}
       </div>
+      {footer && <div className="exercise-guide-rest">{footer}</div>}
     </dialog>, document.body
   );
 }
