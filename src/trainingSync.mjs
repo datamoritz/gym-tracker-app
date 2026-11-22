@@ -1,7 +1,7 @@
 export const TRAINING_KEY = 'fitness_notion_v1';
 const fields = {
   gyms: ['id','name'],
-  exercises: ['id','name'],
+  exercises: ['id','name','note','noteUpdatedAt'],
   machines: ['id','name','gymId','stations','archived'],
   targets: ['id','name','exerciseIds','frequency','requiredSets','recommendedSets','maxSets','repMin','repMax','perSide','prescriptions','windowDays','spacingDays','priority','active','optional','order','guidance'],
   sessions: ['id','gymId','startedAt','trainingDate','endedAt','restUntil'],
@@ -21,7 +21,8 @@ export function recordsFor(state, entity) {
   if (!state) return [];
   if (entity === 'assignments') return state.exercises.map(exercise => ({ id: exercise.id, machineIds: (state.equipmentLinks || []).filter(link => !link.archived && link.exerciseId === exercise.id).map(link => link.machineId).sort() }));
   const records = entity === 'settings' ? [{ id: state.settingsId, name: 'Preferences', timeZone: state.timeZone, trainingDayStartHour: state.trainingDayStartHour, selectedGymId: state.selectedGymId, rankingConfig: state.rankingConfig }] : state[entity] || [];
-  return records.map(record => ({ ...Object.fromEntries(fields[entity].filter(key => record[key] !== undefined).map(key => [key, record[key]])),
+  return records.map(record => ({ ...(entity === 'exercises' ? { note: '', noteUpdatedAt: null } : {}),
+    ...Object.fromEntries(fields[entity].filter(key => record[key] !== undefined).map(key => [key, record[key]])),
     ...(entity === 'sets' ? { deleted: false, activities: (state.activities || []).filter(activity => [record.activityId, ...(record.activityIds || [])].includes(activity.id)) } : {}) }));
 }
 export function mutationsBetween(before, after, id = () => crypto.randomUUID()) {

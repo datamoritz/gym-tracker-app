@@ -7,6 +7,7 @@ export default function useRestTimer({ storageKey, initialDeadline, onError }) {
   error.current = onError;
   const [now, setNow] = useState(Date.now());
   const [soundReady, setSoundReady] = useState(false);
+  const [soundTest, setSoundTest] = useState('');
   const alarm = useRef(null);
   const attempt = useRef({ pending: false, blocked: false });
   if (!alarm.current) alarm.current = createRestAlarm(() => window.AudioContext || window.webkitAudioContext);
@@ -57,11 +58,19 @@ export default function useRestTimer({ storageKey, initialDeadline, onError }) {
       document.removeEventListener('visibilitychange', wake); window.removeEventListener('storage', changed);
     };
   }, [storageKey]);
-  return { visible: timer.deadline > 0, deadline: timer.deadline, alerted: timer.alerted, remaining: restRemaining(timer, now), soundReady,
+  return { visible: timer.deadline > 0, deadline: timer.deadline, alerted: timer.alerted, remaining: restRemaining(timer, now), soundReady, soundTest,
     start, clear, enableSound,
     async testSound() {
-      const pendingAlarm = restNeedsAlarm(current.current);
-      if (!await enableSound() || !pendingAlarm && !await alarm.current.play()) error.current?.('Could not play sound. Try enabling audio in your browser.');
+      const activeAttempt = attempt.current;
+      setSoundTest('Starting…');
+      activeAttempt.pending = true;
+      // Do not await an unlock first: Safari needs play() in this click itself.
+      const played = await alarm.current.play({ gesture: true });
+      if (attempt.current !== activeAttempt) return;
+      activeAttempt.pending = false; activeAttempt.blocked = !played; setSoundReady(played);
+      setSoundTest(played ? 'Test sound played' : 'Sound blocked');
+      if (played && restNeedsAlarm(current.current)) save({ ...current.current, alerted: true });
+      if (!played) error.current?.('Could not play sound. Check media volume and browser audio permissions, then try again.');
     }
   };
 }

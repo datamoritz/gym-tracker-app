@@ -79,3 +79,41 @@ test('Notion relation changes unlink equipment without deleting its page or past
   assert.deepEqual(change,{page:exercisePage,properties:{'Equipment profiles':{relation:[]}}});
   assert.equal(context.all.machines.length,1); assert.equal(context.all.sets.length,1);
 });
+
+test('personal exercise notes sync without touching names, assignments, guides or past sets', async t => {
+  const { sync, state } = await fixture();
+  const { saveExerciseNote } = await import('../src/exerciseNotes.mjs');
+  const exercise = state.exercises[0];
+  const next = saveExerciseNote(state, exercise.id, 'Seat 4', '2026-11-21T22:10:35.123Z');
+  const ops = sync.mutationsBetween(state, next);
+  assert.equal(ops.length, 1);
+  assert.equal(ops[0].entity, 'exercises');
+  assert.deepEqual(ops[0].changes, { note: 'Seat 4', noteUpdatedAt: '2026-11-21T22:10:00.000Z' });
+  let written;
+  const page = id(), context = { all: { exercises: [{ ...exercise, note: '', noteUpdatedAt: null, notionPageId: page }] }, cfg: {} };
+  t.mock.method(notion, 'updatePage', async (pageId, properties) => { written = { pageId, properties }; return { id: pageId }; });
+  await provider.applyOperation(context, ops[0], sync.equal);
+  assert.deepEqual(written, { pageId: page, properties: {
+    'Training note': notion.text('Seat 4'), 'Training note updated': { date: { start: '2026-11-21T22:10:00.000Z' } }
+  } });
+  await provider.applyOperation(context, ops[0], sync.equal);
+  assert.equal(next.sets, state.sets);
+  assert.throws(() => provider.validateRecord('exercises', { ...exercise, note: 'x'.repeat(5001) }), /note/);
+  assert.deepEqual(ops[0].base, { note: '', noteUpdatedAt: null }, 'Older cached exercises use the same empty defaults as Notion');
+});
+
+test('Notion reads personal notes and canonicalizes the minute timestamp for subsequent edits', async t => {
+  const cfg = Object.fromEntries(['exercises','gyms','muscles','machines','targets','sessions','sets','settings'].map(key => [key, { dataSourceId: id() }]));
+  cfg.parentPageId = id(); cfg.settingsId = id();
+  const original = process.env.FITNESS_DATABASES;
+  process.env.FITNESS_DATABASES = JSON.stringify(cfg);
+  t.after(() => { if (original === undefined) delete process.env.FITNESS_DATABASES; else process.env.FITNESS_DATABASES = original; });
+  const exerciseId = id();
+  t.mock.method(notion, 'rows', async source => source === cfg.exercises.dataSourceId ? [{ id: exerciseId, properties: {
+    'Exercise Name': notion.title('Lateral raise'), 'Tracker active': { checkbox: true },
+    'Training note': notion.text('Seat 4'), 'Training note updated': { date: { start: '2026-11-21T22:10:00.000+00:00' } }
+  } }] : []);
+  const { state } = await provider.readAll();
+  assert.equal(state.exercises[0].note, 'Seat 4');
+  assert.equal(state.exercises[0].noteUpdatedAt, '2026-11-21T22:10:00.000Z');
+});

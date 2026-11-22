@@ -93,3 +93,52 @@ test('unsupported or blocked audio returns a retryable failure without breaking 
   assert.equal(await blocked.play(),false);
   blocked.dispose();
 });
+
+function mediaFixture() {
+  const calls = [], session = { type: 'auto' };
+  const audio = { currentTime: 0, play() { calls.push('play'); return Promise.resolve(); }, pause() { calls.push('pause'); } };
+  return { audio, calls, session, options: { createAudio: () => audio, audioSession: () => session } };
+}
+test('timer sound primes one reusable media element on the gesture and uses a transient headphone-friendly session', async () => {
+  const { createRestAlarm } = await modulePromise;
+  const { audio, calls, session, options } = mediaFixture();
+  const alarm = createRestAlarm(() => undefined, options);
+  const priming = alarm.unlock();
+  assert.deepEqual(calls, ['play'], 'play must run synchronously before awaiting');
+  assert.equal(await priming, true);
+  assert.deepEqual(calls, ['play', 'pause']);
+  assert.equal(session.type, 'transient');
+  assert.equal(audio.currentTime, 0);
+  assert.equal(await alarm.unlock(), true);
+  assert.equal(calls.length, 2, 'ordinary taps must not restart audio');
+  assert.equal(await alarm.play(), true);
+  assert.equal(calls.at(-1), 'play');
+  alarm.cancel();
+  assert.equal(calls.at(-1), 'pause');
+});
+test('Settings plays directly on its original click without an asynchronous unlock step', async () => {
+  const { createRestAlarm } = await modulePromise;
+  const { calls, options } = mediaFixture();
+  const alarm = createRestAlarm(() => undefined, options);
+  const playing = alarm.play({ gesture: true });
+  assert.deepEqual(calls, ['play']);
+  assert.equal(await playing, true);
+  alarm.dispose();
+});
+test('blocked media falls back to tones and late priming cannot restart a cancelled timer', async () => {
+  const { createRestAlarm } = await modulePromise;
+  const fixture = audioFixture(), media = mediaFixture();
+  media.audio.play = () => Promise.reject(new Error('blocked'));
+  const fallback = createRestAlarm(() => fixture.AudioContext, media.options);
+  assert.equal(await fallback.unlock(), true);
+  assert.equal(await fallback.play(), true);
+  assert.equal(fixture.oscillators.length, 3);
+  fallback.dispose();
+  let release;
+  const pending = mediaFixture();
+  pending.audio.play = () => new Promise(resolve => { release = resolve; });
+  const cancelled = createRestAlarm(() => undefined, pending.options);
+  const priming = cancelled.unlock(); cancelled.cancel(); release();
+  assert.equal(await priming, false);
+  assert.equal(await cancelled.play(), false);
+});

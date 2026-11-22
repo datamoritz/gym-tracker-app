@@ -68,6 +68,7 @@ async function readAll() {
     for (const machineId of ids(p['Equipment profiles'], 'machines')) state.equipmentLinks.push({ id: `${id}:${machineId}`, exerciseId: id, machineId, archived: false });
     return { id, notionPageId: page.id, name: n.rich(p['Exercise Name']), archived: !checked(p,'Tracker active'), type: p['Exercise type']?.select?.name || null,
       primaryMuscleIds: ids(p['Primary muscles'],'muscles'), supportingMuscleIds: ids(p['Supporting muscles'],'muscles'),
+      note: n.rich(p['Training note']), noteUpdatedAt: date(p,'Training note updated') ? new Date(date(p,'Training note updated')).toISOString() : null,
       instructions: n.rich(p.Instructions), commonMistakes: n.rich(p['Common Mistakes']), musclesWorked: n.rich(p['Muscles Worked']), sourceUrl: p['Source URL']?.url || '',
       images: (p.Images?.files || []).map(file => ({ name: file.name, url: file.file?.url || file.external?.url || '' })) };
   });
@@ -92,7 +93,7 @@ async function readAll() {
 }
 
 const ALLOWED = {
-  gyms: ['name'], exercises: ['name'], assignments: ['machineIds'], machines: ['name','gymId','stations','archived'],
+  gyms: ['name'], exercises: ['name','note','noteUpdatedAt'], assignments: ['machineIds'], machines: ['name','gymId','stations','archived'],
   targets: ['name','exerciseIds','frequency','requiredSets','recommendedSets','maxSets','repMin','repMax','perSide','prescriptions','windowDays','spacingDays','priority','active','optional','order','guidance'],
   sessions: ['gymId','startedAt','trainingDate','endedAt','restUntil'],
   sets: ['activityId','activityIds','sessionId','exerciseId','machineId','gymId','exerciseName','machineName','weight','reps','perSide','unit','kind','note','trainingDate','performedAt','activities','source','deleted'],
@@ -107,6 +108,7 @@ function validateRecord(entity, record) {
   const idList = value => Array.isArray(value) && value.length <= 100 && value.every(n.uuid);
   const when = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
   if (['gyms','exercises','machines','targets','settings'].includes(entity) && (typeof record.name !== 'string' || !record.name.trim() || record.name.length > 300)) throw fail('Enter a name of up to 300 characters.');
+  if (entity === 'exercises' && (record.note !== undefined && (typeof record.note !== 'string' || record.note.length > 5000) || record.noteUpdatedAt != null && !when(record.noteUpdatedAt))) throw fail('Check the exercise note and timestamp.');
   if (entity === 'assignments' && !idList(record.machineIds)) throw fail('Invalid equipment assignments.');
   if (entity === 'machines' && (!n.uuid(record.gymId) || !Array.isArray(record.stations) || !int(record.stations.length,1,50))) throw fail('Check the machine gym and stations.');
   if (entity === 'targets') {
@@ -150,7 +152,10 @@ async function applyOperation(context, op, equal) {
   validateRecord(op.entity,record);
   if (op.entity === 'exercises' || op.entity === 'assignments') {
     const properties = op.entity === 'assignments' ? { 'Equipment profiles': n.relation(record.machineIds.map(id => pageId(context,'machines',id))) } : {
-      'Exercise Name': n.title(record.name), ...(!current ? { 'Tracker ID': n.text(record.id), 'Tracker active': { checkbox: true } } : {})
+      ...(!current || 'name' in changes ? { 'Exercise Name': n.title(record.name) } : {}),
+      ...('note' in changes ? { 'Training note': n.text(record.note) } : {}),
+      ...('noteUpdatedAt' in changes ? { 'Training note updated': { date: record.noteUpdatedAt ? { start: record.noteUpdatedAt } : null } } : {}),
+      ...(!current ? { 'Tracker ID': n.text(record.id), 'Tracker active': { checkbox: true } } : {})
     };
     const exercise = context.all.exercises.find(item => item.id === op.recordId);
     if (!exercise && op.entity === 'assignments') throw fail('The exercise is missing.',409);

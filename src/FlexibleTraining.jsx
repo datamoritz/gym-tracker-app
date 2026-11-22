@@ -13,6 +13,8 @@ import TrainingHistory from './TrainingHistory.jsx';
 import DailyStar from './DailyStar.jsx';
 import useRestTimer from './useRestTimer.jsx';
 import RestTimer from './RestTimer.jsx';
+import ExerciseNote from './ExerciseNote.jsx';
+import { editTargetFrequency } from './targetEditor.mjs';
 import { nextCompletionGroups } from './nextGroups.mjs';
 import { readDailyStars, starsForDay, toggleDailyStar } from './dailyStars.mjs';
 import { currentTrainingDay, dayStartHour, setTrainingDate } from './trainingCalendar.mjs';
@@ -39,8 +41,7 @@ function TargetEditor({ state, target, onSave, onClose }) {
     prescriptions: [{ id: newId(), requiredSets: 3, maxSets: 3, repMin: 8, repMax: 12, perSide: false }] });
   const change = (key, value) => setForm(previous => ({ ...previous, [key]: value }));
   function changeFrequency(value) {
-    const frequency = Math.min(7, Math.max(1, Number(value)));
-    setForm(previous => ({ ...previous, frequency, prescriptions: Array.from({ length: frequency }, (_, index) => previous.prescriptions[index] || { ...previous.prescriptions[0], id: newId() }) }));
+    setForm(previous => editTargetFrequency(previous, value, newId));
   }
   function changeDose(index, key, value) {
     setForm(previous => ({ ...previous, prescriptions: previous.prescriptions.map((dose, position) => position === index ? { ...dose, [key]: value,
@@ -252,12 +253,13 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
               const logged = addFlexibleSet(startFlexibleSession(previous, day, now.toISOString(), Boolean(testDate)), { ...input, targetId: selectedTargetId, exerciseId: selectedExerciseId, machineId, day, now: now.toISOString() });
               const active = activeSession(logged);
               return { ...logged, sessions: logged.sessions.map(item => item.id === active.id ? { ...item, restUntil: restDeadline } : item) };
-            })) { setInput(previous => ({ ...previous, note: '' })); rest.start(restDeadline); setNow(new Date()); }
+            })) { rest.start(restDeadline); setNow(new Date()); }
           }}>
             <WorkoutValues input={input} onChange={setInput} perSide={selectedRow.progress.prescription.perSide} />
             <div className="flex-actions flex-play-actions"><button className="flex-log-button" disabled={previewMismatch}>{`Log set ${selectedRow.progress.todaySets + 1}${selectedRow.progress.todaySets < (selectedRow.progress.prescription.recommendedSets || selectedRow.progress.requiredSets) ? ` / ${selectedRow.progress.prescription.recommendedSets || selectedRow.progress.requiredSets}` : ''}`}</button><button type="button" className="flex-primary" onClick={() => setSelectedTargetId(null)}>{selectedRow.progress.completedToday ? 'Done' : 'Next'}</button></div>
+            <ExerciseNote key={selectedExerciseId} state={state} exerciseId={selectedExerciseId} commit={commit} />
             <EquipmentProgress key={`${selectedExerciseId}:${machineId}`} history={machineHistory} unit={input.unit} />
-            <details className="flex-details"><summary>More</summary><div className="flex-grid"><Field label="Note"><input value={input.note} onChange={event => setInput(previous => ({ ...previous, note: event.target.value }))} /></Field><Field label="Rest (seconds)"><input type="number" min="0" max="600" value={restSeconds} onChange={event => setRestSeconds(Math.min(600, Math.max(0, Number(event.target.value))))} /></Field></div><button type="button" className="flex-secondary flex-manual-rest" onClick={() => updateRest(restSeconds > 0 ? Date.now() + restSeconds * 1000 : 0)}>Start timer</button></details>
+            <details className="flex-details"><summary>More</summary><Field label="Rest (seconds)"><input type="number" min="0" max="600" value={restSeconds} onChange={event => setRestSeconds(Math.min(600, Math.max(0, Number(event.target.value))))} /></Field><button type="button" className="flex-secondary flex-manual-rest" onClick={() => updateRest(restSeconds > 0 ? Date.now() + restSeconds * 1000 : 0)}>Start timer</button></details>
           </form>}
           {selectedSets.length > 0 && <div className="flex-set-list">{selectedSets.map(set => <SetRow key={set.id} set={set} state={state} onRemove={removeSet} />)}</div>}
           {machineHistory.length > 0 && <details className="flex-details"><summary>History</summary>{[...machineHistory].reverse().slice(0, 12).map(set => <SetRow key={set.id} set={set} state={state} date />)}</details>}
@@ -266,8 +268,8 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
           {!rows.length && <p className="flex-empty">No linked exercises at this gym.</p>}
           {!choices.length && !otherOptions.length && done.length > 0 && <p className="flex-empty">Done for today.</p>}
         </>}
-        {!selectedRow && <details className="flex-details flex-done-today" open={doneToday.length > 0}><summary>Done Today ({doneToday.length})</summary>{doneToday.length ? doneToday.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />) : <p className="flex-muted">No exercises finished today.</p>}</details>}
         {otherOptions.length > 0 && !selectedRow && <details className="flex-details" open><summary>Other options ({otherOptions.length})</summary>{otherOptions.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />)}</details>}
+        {!selectedRow && <details className="flex-details flex-done-today" open={doneToday.length > 0}><summary>Done Today ({doneToday.length})</summary>{doneToday.length ? doneToday.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />) : <p className="flex-muted">No exercises finished today.</p>}</details>}
         {doneWeekly.length > 0 && !selectedRow && <details className="flex-details"><summary>Done ({doneWeekly.length})</summary>{doneWeekly.map(row => <TargetCard key={row.target.id} starred={starredIds.includes(row.target.id)} onToggleStar={() => toggleStar(row.target.id)} row={row} onChoose={() => openTarget(row)} />)}</details>}
       </>}
       {tab === 'targets' && <>
@@ -285,7 +287,7 @@ export default function FlexibleTraining({ initialState, persist, syncStatus, sy
       {tab === 'history' && <TrainingHistory state={state} day={day} onRemove={removeSet} />}
       {tab === 'settings' && <div className="flex-settings">
         <AppearanceSettings appearance={appearance} onChange={updateAppearance} />
-        <button className="flex-secondary" onClick={rest.testSound}>Test timer sound</button>
+        <div className="flex-actions"><button className="flex-secondary" onClick={rest.testSound}>Test timer sound</button>{rest.soundTest && <span className="flex-muted" role="status">{rest.soundTest}</span>}</div>
         <p className="flex-muted">Training day resets at {String(dayStartHour(state)).padStart(2, '0')}:00 · {state.timeZone}</p>
         {state.gyms.map(gym => <GymName key={gym.id} gym={gym} commit={commit} />)}
         {!state.production && <button className="flex-secondary" onClick={() => commit(previous => ({ ...previous, gyms: [...previous.gyms, { id: newId(), name: `Gym ${previous.gyms.length + 1}` }] }))}>+ Gym</button>}
