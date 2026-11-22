@@ -82,6 +82,9 @@ export function createRestAlarm(getAudioContext, {
     },
     async play({ gesture = false } = {}) {
       configureOutput();
+      // A Settings click can arrive while the pointer-down unlock is still
+      // loading. Its old completion must not pause the newly requested sound.
+      if (gesture) { generation++; priming = null; }
       const token = generation;
       const active = gesture ? ensureContext() : context;
       let resumed;

@@ -125,6 +125,20 @@ test('Settings plays directly on its original click without an asynchronous unlo
   assert.equal(await playing, true);
   alarm.dispose();
 });
+test('a slow pointer-down unlock cannot pause the Settings test requested by the following click', async () => {
+  const { createRestAlarm } = await modulePromise;
+  const { audio, calls, options } = mediaFixture();
+  let release;
+  audio.play = () => { calls.push('play'); return new Promise(resolve => { release = resolve; }); };
+  const alarm = createRestAlarm(() => undefined, options);
+  const priming = alarm.unlock(), releasePrime = release;
+  const testSound = alarm.play({ gesture: true }), releaseSound = release;
+  releasePrime(); releaseSound();
+  assert.equal(await priming, false);
+  assert.equal(await testSound, true);
+  assert.deepEqual(calls, ['play', 'play'], 'The stale unlock must not pause/reset the test sound');
+  alarm.dispose();
+});
 test('blocked media falls back to tones and late priming cannot restart a cancelled timer', async () => {
   const { createRestAlarm } = await modulePromise;
   const fixture = audioFixture(), media = mediaFixture();
