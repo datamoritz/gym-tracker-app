@@ -6,7 +6,8 @@ export const DEFAULT_RANKING = Object.freeze({
   recommendedFatigueThreshold: 0.7,
   continuationBonus: 0.08,
   isolationPenalty: 0.12,
-  openingCompoundBonus: 2
+  openingCompoundBonus: 2,
+  maxRecencyBonus: 0.25
 });
 
 export const OPENING_COMPOUND_GOAL = 2;
@@ -17,7 +18,8 @@ export const RANKING_FIELDS = [
   ['recommendedFatigueThreshold', 'Recommended threshold', 0, 1],
   ['continuationBonus', 'Continue bonus', 0, 0.25],
   ['isolationPenalty', 'Isolation ordering penalty', 0, 0.5],
-  ['openingCompoundBonus', 'Opening compound bonus', 0, 3]
+  ['openingCompoundBonus', 'Opening compound bonus', 0, 3],
+  ['maxRecencyBonus', 'Less recent target bonus (maximum)', 0, 0.5]
 ];
 
 export function rankingConfig(state) {
@@ -42,8 +44,16 @@ export function saveRankingConfig(state, input) {
 export const NEXT_REASONS = Object.freeze({
   DUE: 'Due', CONTINUE: 'Continue', RECENT_OVERLAP: 'Recent muscle work',
   SESSION_OVERLAP: 'Muscles worked today', FINISHED_TODAY: 'Finished today', TARGET_MET: 'Target met',
-  OPENING_COMPOUND: 'Larger exercise first'
+  OPENING_COMPOUND: 'Larger exercise first', LESS_RECENT: 'Less recently completed', NOT_COMPLETED: 'Not yet completed'
 });
+
+export function recencyPreference(daysSinceCompletion, due, config) {
+  if (!due || !(config.maxRecencyBonus > 0)) return { recencyBonus: 0, recencyAge: -1 };
+  // Weekly credit stays in its seven-day window. This bounded preference uses
+  // older completed occasions, with never-completed targets receiving the max.
+  const factor = daysSinceCompletion === null ? 1 : Math.min(1, Math.max(0, (daysSinceCompletion - 7) / 21));
+  return { recencyBonus: config.maxRecencyBonus * factor, recencyAge: daysSinceCompletion ?? Infinity };
+}
 
 export function uniqueWorkingSets(state, day, now) {
   const seen = new Set();
@@ -96,5 +106,7 @@ const bucketOrder = { recommended: 0, other: 1, done: 2 };
 export function compareRankedOptions(a, b) {
   // Round to hundredths so alternation only breaks practically equal scores.
   return bucketOrder[a.bucket] - bucketOrder[b.bucket] || Math.round(b.score * 100) - Math.round(a.score * 100) ||
-    Number(b.alternatesPrimary) - Number(a.alternatesPrimary);
+    Number(b.alternatesPrimary) - Number(a.alternatesPrimary) ||
+    // Preserve rotation even after both bonuses reach their cap on long breaks.
+    Number(b.recencyAge > a.recencyAge) - Number(a.recencyAge > b.recencyAge);
 }

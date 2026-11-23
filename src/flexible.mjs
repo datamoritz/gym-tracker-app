@@ -2,7 +2,7 @@ import { installTrainingTargets } from './trainingTargets.mjs';
 import { installLateralExample, machineExerciseIds, exerciseMachines, byName, setMachineExercises } from './equipment.mjs';
 import { installFocusedExample, scopeItems } from './focusedExample.mjs';
 import { migrateMuscles, primaryMuscleIds } from './muscles.mjs';
-import { rankingConfig, uniqueWorkingSets, fatigueModifiers, muscleOverlap, compareRankedOptions, NEXT_REASONS, OPENING_COMPOUND_GOAL } from './ranking.mjs';
+import { rankingConfig, uniqueWorkingSets, fatigueModifiers, muscleOverlap, compareRankedOptions, recencyPreference, NEXT_REASONS, OPENING_COMPOUND_GOAL } from './ranking.mjs';
 export { prescription, weeklyPrescription } from './trainingTargets.mjs';
 export const FLEXIBLE_KEY = 'gym_flexible_preview_v1';
 export const newId = () => crypto.randomUUID();
@@ -114,6 +114,8 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
     const baseScore = shortfall * target.priority;
     const continuing = progress.todaySets > 0 && !progress.finished_today;
     const continuationBonus = continuing ? config.continuationBonus : 0;
+    const recency = recencyPreference(progress.lastDay ? dayDistance(progress.lastDay, day) : null,
+      !progress.finished_today && !progress.rolling_target_met, config);
     const exerciseOptions = eligible.map(({ exercise, machines }) => {
       const modifiers = fatigueModifiers(exercise, target, sets, day, exerciseById, config, now);
       const suitable = modifiers.fatigueModifier >= config.recommendedFatigueThreshold;
@@ -124,8 +126,8 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
       const bucket = done ? 'done' : !target.optional && (suitable || openingBonus > 0) ? 'recommended' : 'other';
       const alternatesPrimary = primaryMuscleIds(exercise).length > 0 && primaryMuscleIds(lastExercise).length > 0 &&
         !primaryMuscleIds(exercise).some(id => primaryMuscleIds(lastExercise).includes(id));
-      return { exercise, machines, ...modifiers, bucket, baseScore, continuationBonus, openingBonus, orderingAdjustment: 0,
-        score: baseScore * modifiers.fatigueModifier + continuationBonus + openingBonus, alternatesPrimary };
+      return { exercise, machines, ...modifiers, ...recency, bucket, baseScore, continuationBonus, openingBonus, orderingAdjustment: 0,
+        score: baseScore * modifiers.fatigueModifier + continuationBonus + openingBonus + recency.recencyBonus, alternatesPrimary };
     });
     return [{ target, progress, exerciseOptions, shortfall, finished_today: progress.finished_today, rolling_target_met: progress.rolling_target_met }];
   });
@@ -144,6 +146,7 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
     const reasonCodes = [];
     if (row.progress.remaining) reasonCodes.push('DUE');
     if (best.openingBonus > 0) reasonCodes.push('OPENING_COMPOUND');
+    if (best.recencyBonus > 0) reasonCodes.push(row.progress.lastDay ? 'LESS_RECENT' : 'NOT_COMPLETED');
     if (row.progress.todaySets > 0 && !row.finished_today) reasonCodes.push('CONTINUE');
     if (best.recentLoad > 0) reasonCodes.push('RECENT_OVERLAP');
     if (best.todayLoad > 0) reasonCodes.push('SESSION_OVERLAP');
