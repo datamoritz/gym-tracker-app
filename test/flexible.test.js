@@ -61,14 +61,16 @@ test('partial sets aggregate across sessions but a day earns at most one occasio
   assert.equal(api.targetProgress(next, target, DAY).occasions, 1);
 });
 
-test('rolling seven calendar days includes six days ago and expires seven days ago', async () => {
+test('training-week credit resets together on Monday rather than expiring each occasion separately', async () => {
   const { api, target, log, state } = await fixture();
   let next = log(log(log(state, { day: '2026-10-21' }), { day: '2026-10-21' }), { day: '2026-10-21' });
   next = api.finishFlexibleSession(next);
   next = log(log(log(next, { day: '2026-10-22' }), { day: '2026-10-22' }), { day: '2026-10-22' });
-  assert.equal(api.targetProgress(next, target, '2026-10-27').occasions, 2);
-  assert.equal(api.targetProgress(next, target, DAY).occasions, 1);
+  assert.equal(api.targetProgress(next, target, '2026-10-25').occasions, 2);
+  assert.equal(api.targetProgress(next, target, '2026-10-26').occasions, 0);
+  assert.equal(api.targetProgress(next, target, DAY).occasions, 0);
   assert.equal(api.targetProgress(next, target, '2026-10-29').occasions, 0);
+  assert.equal(api.targetProgress(next, target, '2026-10-29').lastDay, '2026-10-22');
 });
 
 test('doing work ahead counts on the actual training day and future records do not influence earlier previews', async () => {
@@ -224,7 +226,7 @@ test('the personal target preset combines repeated exercises and preserves every
   });
 });
 
-test('different weekly doses are consumed once and return individually when they expire', async () => {
+test('different weekly doses are consumed once per training week and reset together', async () => {
   const api = await lib;
   let state = api.createFlexibleState('America/Los_Angeles');
   const target = state.targets.find(item => item.presetKey === 'chest');
@@ -240,7 +242,9 @@ test('different weekly doses are consumed once and return individually when they
   assert.equal(api.targetProgress(state, target, '2026-10-30').completedToday, false);
   log('2026-10-30');
   assert.equal(api.targetProgress(state, target, '2026-10-30').occasions, 2);
-  assert.equal(api.targetProgress(state, target, '2026-11-04').occasions, 1);
+  assert.equal(api.targetProgress(state, target, '2026-11-01').occasions, 2);
+  assert.equal(api.targetProgress(state, target, '2026-11-02').occasions, 0);
+  assert.equal(api.targetProgress(state, target, '2026-11-04').occasions, 0);
   assert.equal(api.targetProgress(state, target, '2026-11-04').requiredSets, 3);
 });
 

@@ -3,6 +3,7 @@ import { installLateralExample, machineExerciseIds, exerciseMachines, byName, se
 import { installFocusedExample, scopeItems } from './focusedExample.mjs';
 import { migrateMuscles, primaryMuscleIds } from './muscles.mjs';
 import { rankingConfig, uniqueWorkingSets, fatigueModifiers, muscleOverlap, compareRankedOptions, recencyPreference, NEXT_REASONS, OPENING_COMPOUND_GOAL } from './ranking.mjs';
+import { trainingWeek } from './trainingWeek.mjs';
 export { prescription, weeklyPrescription } from './trainingTargets.mjs';
 export const FLEXIBLE_KEY = 'gym_flexible_preview_v1';
 export const newId = () => crypto.randomUUID();
@@ -61,7 +62,8 @@ export function targetProgress(state, target, day, now) {
     group.count += 1;
   }
   const qualified = [...days.values()].filter(group => group.count >= group.requiredSets).sort((a, b) => a.day.localeCompare(b.day));
-  const recent = qualified.filter(group => dayDistance(group.day, day) < target.windowDays);
+  const week = trainingWeek(state, day);
+  const recent = qualified.filter(group => group.day >= week.startDay && group.day <= week.endDay);
   const lastDay = qualified.at(-1)?.day || null;
   const relatedActivityIds = new Set(state.activities.filter(activity => {
     const relatedTarget = state.targets.find(item => item.id === activity.targetId);
@@ -77,7 +79,7 @@ export function targetProgress(state, target, day, now) {
     daysSince: lastWorkedDay ? dayDistance(lastWorkedDay, day) : null,
     todaySets: today?.count || 0, requiredSets: dose.requiredSets, prescription: dose,
     completedToday: Boolean(today && today.count >= today.requiredSets),
-    finished_today: Boolean(today && today.count >= today.requiredSets), rolling_target_met: recent.length >= target.frequency };
+    finished_today: Boolean(today && today.count >= today.requiredSets), weekly_target_met: recent.length >= target.frequency };
 }
 
 // Count actual qualifying compound work, not merely targets that offer a
@@ -115,11 +117,11 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
     const continuing = progress.todaySets > 0 && !progress.finished_today;
     const continuationBonus = continuing ? config.continuationBonus : 0;
     const recency = recencyPreference(progress.lastDay ? dayDistance(progress.lastDay, day) : null,
-      !progress.finished_today && !progress.rolling_target_met, config);
+      !progress.finished_today && !progress.weekly_target_met, config);
     const exerciseOptions = eligible.map(({ exercise, machines }) => {
       const modifiers = fatigueModifiers(exercise, target, sets, day, exerciseById, config, now);
       const suitable = modifiers.fatigueModifier >= config.recommendedFatigueThreshold;
-      const done = progress.finished_today || progress.rolling_target_met;
+      const done = progress.finished_today || progress.weekly_target_met;
       // Recovery is still a gradual score penalty. During the opening phase it
       // must not categorically hide every compound behind untouched core work.
       const openingBonus = opening.remaining > 0 && !done && !target.optional && exercise.type === 'compound' ? config.openingCompoundBonus : 0;
@@ -129,13 +131,13 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
       return { exercise, machines, ...modifiers, ...recency, bucket, baseScore, continuationBonus, openingBonus, orderingAdjustment: 0,
         score: baseScore * modifiers.fatigueModifier + continuationBonus + openingBonus + recency.recencyBonus, alternatesPrimary };
     });
-    return [{ target, progress, exerciseOptions, shortfall, finished_today: progress.finished_today, rolling_target_met: progress.rolling_target_met }];
+    return [{ target, progress, exerciseOptions, shortfall, finished_today: progress.finished_today, weekly_target_met: progress.weekly_target_met }];
   });
   for (const row of rows) {
     for (const option of row.exerciseOptions) {
-      if (option.exercise.type !== 'isolation' || row.finished_today || row.rolling_target_met) continue;
+      if (option.exercise.type !== 'isolation' || row.finished_today || row.weekly_target_met) continue;
       const compounds = rows.filter(other => other.target.id !== row.target.id && !other.target.optional &&
-        other.target.priority >= row.target.priority && !other.finished_today && !other.rolling_target_met)
+        other.target.priority >= row.target.priority && !other.finished_today && !other.weekly_target_met)
         .flatMap(other => other.exerciseOptions).filter(other => other.exercise.type === 'compound' && other.bucket === 'recommended');
       const overlap = Math.max(0, ...compounds.map(compound => muscleOverlap(compound.exercise, option.exercise, config)));
       option.orderingAdjustment = -config.isolationPenalty * overlap;
@@ -151,13 +153,13 @@ export function rankTargets(state, day, now = new Date().toISOString()) {
     if (best.recentLoad > 0) reasonCodes.push('RECENT_OVERLAP');
     if (best.todayLoad > 0) reasonCodes.push('SESSION_OVERLAP');
     if (row.finished_today) reasonCodes.push('FINISHED_TODAY');
-    if (row.rolling_target_met) reasonCodes.push('TARGET_MET');
+    if (row.weekly_target_met) reasonCodes.push('TARGET_MET');
     Object.assign(row, best, { recommendedExerciseId: best.exercise.id,
       exercises: row.exerciseOptions.map(option => option.exercise),
       machines: [...new Map(row.exerciseOptions.flatMap(option => option.machines).map(machine => [machine.id, machine])).values()].sort(byName),
       reasonCodes, reasons: [...reasonCodes.map(code => NEXT_REASONS[code]), ...(best.orderingAdjustment < 0 ? ['Better later · overlapping compound work remains'] : [])],
       recovering: best.fatigueLoad > 0, deferred: best.orderingAdjustment < 0,
-      extra: row.rolling_target_met && !row.finished_today });
+      extra: row.weekly_target_met && !row.finished_today });
   }
   return rows.sort((a, b) => compareRankedOptions(a, b) || (a.target.order || 0) - (b.target.order || 0) || a.target.id.localeCompare(b.target.id));
 }

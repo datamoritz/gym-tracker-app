@@ -3,6 +3,6 @@
 export function nextCompletionGroups(rows) {
   return {
     doneToday: rows.filter(row => row.finished_today),
-    doneWeekly: rows.filter(row => row.rolling_target_met)
+    doneWeekly: rows.filter(row => row.weekly_target_met)
   };
 }

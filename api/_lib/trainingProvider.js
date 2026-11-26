@@ -39,6 +39,7 @@ async function readAll() {
     notionUrl: `https://www.notion.so/${cfg.parentPageId.replaceAll('-', '')}`, equipmentLinks: [], activities: [], demoHistory: [] };
   for (const entity of ['gyms','muscles','machines','targets','sessions','sets','settings']) state[entity] = raw[entity].map(page => {
     const record = appRecord(page), p = page.properties;
+    if (entity === 'settings') record.trainingWeekSchedule = record.trainingWeekSchedule || [];
     if (entity === 'machines') Object.assign(record, { gymId: ids(p.Gym, 'gyms')[0], stations: Array.from({ length: Math.max(1, Math.min(50, number(p,'Stations', record.stations?.length || 1))) }, (_, i) => record.stations?.[i] || { id: `${record.id}:${i}`, name: `Station ${i + 1}` }) });
     if (entity === 'targets') {
       const frequency = number(p,'Frequency', record.frequency || 1);
@@ -73,7 +74,7 @@ async function readAll() {
       images: (p.Images?.files || []).map(file => ({ name: file.name, url: file.file?.url || file.external?.url || '' })) };
   });
   const preferences = state.settings.find(item => item.id === cfg.settingsId) || state.settings[0] || {};
-  Object.assign(state, { timeZone: preferences.timeZone || 'America/Los_Angeles', trainingDayStartHour: preferences.trainingDayStartHour ?? 4, selectedGymId: preferences.selectedGymId || state.gyms[0]?.id, rankingConfig: preferences.rankingConfig });
+  Object.assign(state, { timeZone: preferences.timeZone || 'America/Los_Angeles', trainingDayStartHour: preferences.trainingDayStartHour ?? 4, selectedGymId: preferences.selectedGymId || state.gyms[0]?.id, rankingConfig: preferences.rankingConfig, trainingWeekSchedule: preferences.trainingWeekSchedule || [] });
   const activities = new Map();
   for (const set of state.sets) for (const activity of set.activities || []) activities.set(activity.id, activity);
   state.activities = [...activities.values()];
@@ -97,7 +98,7 @@ const ALLOWED = {
   targets: ['name','exerciseIds','frequency','requiredSets','recommendedSets','maxSets','repMin','repMax','perSide','prescriptions','windowDays','spacingDays','priority','active','optional','order','guidance'],
   sessions: ['gymId','startedAt','trainingDate','endedAt','restUntil'],
   sets: ['activityId','activityIds','sessionId','exerciseId','machineId','gymId','exerciseName','machineName','weight','reps','perSide','unit','kind','note','trainingDate','performedAt','activities','source','deleted'],
-  settings: ['name','timeZone','trainingDayStartHour','selectedGymId','rankingConfig']
+  settings: ['name','timeZone','trainingDayStartHour','selectedGymId','rankingConfig','trainingWeekSchedule']
 };
 function validateOperation(op) {
   if (!op || !n.uuid(op.id) || !n.uuid(op.recordId) || !ALLOWED[op.entity] || !op.changes || Array.isArray(op.changes) || typeof op.changes !== 'object' ||
@@ -150,6 +151,10 @@ async function applyOperation(context, op, equal) {
   if (!Object.keys(changes).length && current) return;
   const record = { ...current, ...changes, id: op.recordId };
   validateRecord(op.entity,record);
+  if (op.entity === 'settings' && record.trainingWeekSchedule !== undefined) {
+    const { validWeekSchedule } = await import('../../src/trainingWeek.mjs');
+    if (!validWeekSchedule(record.trainingWeekSchedule)) throw fail('Invalid training-week schedule.');
+  }
   if (op.entity === 'exercises' || op.entity === 'assignments') {
     const properties = op.entity === 'assignments' ? { 'Equipment profiles': n.relation(record.machineIds.map(id => pageId(context,'machines',id))) } : {
       ...(!current || 'name' in changes ? { 'Exercise Name': n.title(record.name) } : {}),

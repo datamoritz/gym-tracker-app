@@ -102,7 +102,7 @@ test('partial work affects recovery without replacing the last completed occasio
 test('weekly-met targets receive no recency boost even after a long absence', async () => {
   const { state, log, row } = await fixture();
   const next = log(log(state, 'chest', '2026-11-20'), 'chest', '2026-11-21');
-  assert.equal(row(next, 'chest').rolling_target_met, true);
+  assert.equal(row(next, 'chest').weekly_target_met, true);
   assert.equal(row(next, 'chest').finished_today, false);
   assert.equal(row(next, 'chest').bucket, 'done');
   assert.equal(row(next, 'chest').recencyBonus, 0);

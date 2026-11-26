@@ -90,7 +90,7 @@ test('credit combines setups and sessions within a local day, with separate deri
   let progress = targetProgress(next, target, firstDay);
   assert.equal(progress.occasions, 1);
   assert.equal(progress.finished_today, true);
-  assert.equal(progress.rolling_target_met, false);
+  assert.equal(progress.weekly_target_met, false);
   assert.equal(row(next, 'chest', firstDay, secondTime).bucket, 'done');
   const afterMidnight = '2026-10-29T07:10:00Z', secondDay = trainingDay(afterMidnight, state.timeZone);
   assert.equal(secondDay, DAY);
@@ -102,16 +102,16 @@ test('credit combines setups and sessions within a local day, with separate deri
   next = log(next, 'chest', 1, { now: '2026-10-29T07:20:00Z' });
   const done = row(next, 'chest');
   assert.equal(done.finished_today, true);
-  assert.equal(done.rolling_target_met, true);
+  assert.equal(done.weekly_target_met, true);
   assert.ok(done.reasonCodes.includes('FINISHED_TODAY'));
   assert.ok(done.reasonCodes.includes('TARGET_MET'));
   const tomorrow = row(next, 'chest', '2026-10-30', '2026-10-30T19:00:00Z');
   assert.equal(tomorrow.finished_today, false);
-  assert.equal(tomorrow.rolling_target_met, true);
+  assert.equal(tomorrow.weekly_target_met, true);
   assert.ok(!tomorrow.reasonCodes.includes('FINISHED_TODAY'));
   const deleted = { ...next, sets: next.sets.slice(0, -1) };
   assert.equal(row(deleted, 'chest').finished_today, false);
-  assert.equal(row(deleted, 'chest').rolling_target_met, false);
+  assert.equal(row(deleted, 'chest').weekly_target_met, false);
   assert.ok(row(deleted, 'fly').fatigueModifier < 1);
   assert.ok(row(deleted, 'fly').todayLoad < row(next, 'fly').todayLoad);
 });
@@ -127,7 +127,7 @@ test('the repeated hour at daylight-saving fallback remains one local training o
   assert.equal(progress.todaySets, 4);
   assert.equal(progress.occasions, 1);
   assert.equal(progress.finished_today, true);
-  assert.equal(progress.rolling_target_met, false);
+  assert.equal(progress.weekly_target_met, false);
 });
 
 test('incomplete work never earns an occasion even across local-day boundaries', async () => {

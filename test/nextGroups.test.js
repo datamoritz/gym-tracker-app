@@ -1,11 +1,11 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-test('Done Today and rolling Done are independent, including their overlap',async()=>{
+test('Done Today and Weekly goal met are independent, including their overlap',async()=>{
   const {nextCompletionGroups}=await import('../src/nextGroups.mjs');
-  const todayOnly={target:{id:'today'},finished_today:true,rolling_target_met:false};
-  const weeklyOnly={target:{id:'week'},finished_today:false,rolling_target_met:true};
-  const both={target:{id:'both'},finished_today:true,rolling_target_met:true};
-  const partial={target:{id:'partial'},finished_today:false,rolling_target_met:false};
+  const todayOnly={target:{id:'today'},finished_today:true,weekly_target_met:false};
+  const weeklyOnly={target:{id:'week'},finished_today:false,weekly_target_met:true};
+  const both={target:{id:'both'},finished_today:true,weekly_target_met:true};
+  const partial={target:{id:'partial'},finished_today:false,weekly_target_met:false};
   const rows=[todayOnly,weeklyOnly,both,partial],before=JSON.stringify(rows);
   const result=nextCompletionGroups(rows);
   assert.deepEqual(result.doneToday,[todayOnly,both]);
